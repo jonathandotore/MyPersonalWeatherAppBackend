@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using WeatherApp.Domain.Interfaces;
+using WeatherApp.Infrastructure.Auth;
 using WeatherApp.Infrastructure.ExternalServices.OpenWeatherMap;
 using WeatherApp.Infrastructure.Persistence;
 using WeatherApp.Infrastructure.Persistence.Repositories;
@@ -14,6 +15,19 @@ public static class DependencyInjection
     {
         services.AddPersistencia(configuration);
         services.AddProvedorDeClima(configuration);
+        services.AddAutenticacaoJwt(configuration);
+
+        return services;
+    }
+
+    private static IServiceCollection AddAutenticacaoJwt(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<JwtSettings>()
+            .Bind(configuration.GetSection(JwtSettings.SecaoConfiguracao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
 
         return services;
     }

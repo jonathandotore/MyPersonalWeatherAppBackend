@@ -49,14 +49,17 @@ public sealed class Usuario
         DataCriacao = DateTime.UtcNow
     };
 
-    public static Usuario CriarRegistrado(string nome, string email, string senhaHash) => new()
+    public static Usuario CriarRegistrado(string nome, string email) => new()
     {
         Id = Guid.NewGuid(),
         Nome = nome,
         Email = NormalizarEmail(email),
-        SenhaHash = senhaHash,
         DataCriacao = DateTime.UtcNow
     };
+
+    /// <summary>O hasher de senha exige uma instância de <see cref="Usuario"/> já criada
+    /// (a assinatura genérica não usa os dados dela) — por isso a senha é definida à parte.</summary>
+    public void DefinirSenha(string senhaHash) => SenhaHash = senhaHash;
 
     /// <summary>
     /// Converte um usuário anônimo em registrado preservando o Id — e, por consequência,

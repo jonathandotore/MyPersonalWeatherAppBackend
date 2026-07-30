@@ -33,4 +33,6 @@ internal sealed class UsuarioRepository(WeatherAppDbContext db) : IUsuarioReposi
         await db.Usuarios.AddAsync(usuario, ct);
         await db.SaveChangesAsync(ct);
     }
+
+    public Task SalvarAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

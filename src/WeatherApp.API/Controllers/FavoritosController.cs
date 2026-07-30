@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WeatherApp.Application.DTOs;
 using WeatherApp.Application.Services;
@@ -7,9 +8,10 @@ namespace WeatherApp.API.Controllers;
 [ApiController]
 [Route("api/favoritos")]
 [Produces("application/json")]
+[Authorize]
 public sealed class FavoritosController(FavoritosService favoritos) : ControllerBase
 {
-    /// <summary>Lista os favoritos do usuário atual (header X-Usuario-Id).</summary>
+    /// <summary>Lista os favoritos do usuário autenticado.</summary>
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<CidadeFavoritaDto>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<CidadeFavoritaDto>>> Listar(CancellationToken ct)

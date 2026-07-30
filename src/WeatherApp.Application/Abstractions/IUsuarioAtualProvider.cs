@@ -8,5 +8,9 @@ public interface IUsuarioAtualProvider
     /// <exception cref="Domain.Exceptions.UsuarioNaoIdentificadoException">Sem identidade utilizável.</exception>
     Guid ObterUsuarioId();
 
+    /// <summary>Como <see cref="ObterUsuarioId"/>, mas sem lançar — usado no registro, onde não
+    /// ter identidade prévia é um caso válido (usuário novo, sem favoritos anônimos).</summary>
+    bool TentarObterUsuarioId(out Guid id);
+
     bool EstaAutenticado { get; }
 }

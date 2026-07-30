@@ -13,4 +13,7 @@ public interface IUsuarioRepository
     Task<Usuario> GarantirAnonimoAsync(Guid id, CancellationToken ct = default);
 
     Task AdicionarAsync(Usuario usuario, CancellationToken ct = default);
+
+    /// <summary>Persiste alterações em uma entidade já rastreada (ex.: Promover).</summary>
+    Task SalvarAsync(CancellationToken ct = default);
 }

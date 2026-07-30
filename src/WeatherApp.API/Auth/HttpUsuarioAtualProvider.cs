@@ -13,23 +13,26 @@ public sealed class HttpUsuarioAtualProvider(IHttpContextAccessor accessor) : IU
 
     public bool EstaAutenticado => accessor.HttpContext?.User.Identity?.IsAuthenticated ?? false;
 
-    public Guid ObterUsuarioId()
+    public Guid ObterUsuarioId() =>
+        TentarObterUsuarioId(out var id) ? id : throw new UsuarioNaoIdentificadoException();
+
+    public bool TentarObterUsuarioId(out Guid id)
     {
-        var contexto = accessor.HttpContext ?? throw new UsuarioNaoIdentificadoException();
-
-        if (TentarObterDaClaim(contexto.User, out var doToken))
+        var contexto = accessor.HttpContext;
+        if (contexto is null)
         {
-            return doToken;
+            id = Guid.Empty;
+            return false;
         }
 
-        if (contexto.Request.Headers.TryGetValue(HeaderUsuarioAnonimo, out var valores)
-            && Guid.TryParse(valores.ToString(), out var doHeader)
-            && doHeader != Guid.Empty)
+        if (TentarObterDaClaim(contexto.User, out id))
         {
-            return doHeader;
+            return true;
         }
 
-        throw new UsuarioNaoIdentificadoException();
+        return contexto.Request.Headers.TryGetValue(HeaderUsuarioAnonimo, out var valores)
+            && Guid.TryParse(valores.ToString(), out id)
+            && id != Guid.Empty;
     }
 
     private static bool TentarObterDaClaim(ClaimsPrincipal principal, out Guid id)

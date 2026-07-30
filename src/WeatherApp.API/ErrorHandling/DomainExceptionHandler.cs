@@ -54,7 +54,7 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
         EmailJaCadastradoException => StatusCodes.Status409Conflict,
 
         CredenciaisInvalidasException => StatusCodes.Status401Unauthorized,
-        UsuarioNaoIdentificadoException => StatusCodes.Status400BadRequest,
+        UsuarioNaoIdentificadoException => StatusCodes.Status401Unauthorized,
 
         ProvedorClimaIndisponivelException => StatusCodes.Status503ServiceUnavailable,
 
