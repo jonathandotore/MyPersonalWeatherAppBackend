@@ -101,31 +101,27 @@ public sealed class OpenWeatherMapProvider(
                 "Não foi possível consultar o serviço de clima. Tente novamente em instantes.", ex);
         }
 
-        // 404 é tratado ANTES de qualquer EnsureSuccessStatusCode: do contrário viraria uma
-        // HttpRequestException genérica e o cliente receberia 500 em vez de 404, falhando
-        // exatamente no requisito de "tratamento de erros".
         if (resposta.StatusCode == HttpStatusCode.NotFound)
-        {
             throw new CidadeNaoEncontradaException(cidade);
-        }
 
         if (resposta.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            // Problema nosso, não do cliente: chave ausente, inválida ou ainda não ativada
-            // (chave nova da OpenWeatherMap pode levar horas para começar a funcionar).
             logger.LogError(
                 "OpenWeatherMap recusou a credencial ({Status}) em {Rota}. Verifique OpenWeatherMap:ApiKey.",
-                (int)resposta.StatusCode, rota);
-            throw new FalhaIntegracaoProvedorException(
-                "A integração com o serviço de clima está mal configurada.");
+                (int)resposta.StatusCode, 
+                rota);
+
+            throw new FalhaIntegracaoProvedorException("A integração com o serviço de clima está mal configurada.");
         }
 
         if (!resposta.IsSuccessStatusCode)
         {
             logger.LogError(
-                "OpenWeatherMap respondeu {Status} em {Rota}.", (int)resposta.StatusCode, rota);
-            throw new ProvedorClimaIndisponivelException(
-                "O serviço de clima está instável no momento. Tente novamente em instantes.");
+                "OpenWeatherMap respondeu {Status} em {Rota}.", 
+                (int)resposta.StatusCode, 
+                rota);
+            
+            throw new ProvedorClimaIndisponivelException("O serviço de clima está instável no momento. Tente novamente em instantes.");
         }
 
         var payload = await resposta.Content.ReadFromJsonSafeAsync<T>(JsonOpcoes, ct);
@@ -136,8 +132,6 @@ public sealed class OpenWeatherMapProvider(
 
     private string MontarUrl(string rota, string cidade)
     {
-        // A cidade vai para a query string como o usuário digitou (só escapada); normalização
-        // acontece apenas na chave de cache, não na chamada ao provedor.
         var q = Uri.EscapeDataString(cidade.Trim());
 
         return string.Create(CultureInfo.InvariantCulture,
@@ -151,10 +145,7 @@ internal static class HttpContentJsonExtensions
     /// Desserializa traduzindo JSON malformado em erro de provedor, em vez de deixar uma
     /// <see cref="JsonException"/> crua escapar como 500.
     /// </summary>
-    internal static async Task<T?> ReadFromJsonSafeAsync<T>(
-        this HttpContent content,
-        JsonSerializerOptions opcoes,
-        CancellationToken ct)
+    internal static async Task<T?> ReadFromJsonSafeAsync<T>(this HttpContent content, JsonSerializerOptions opcoes, CancellationToken ct)
     {
         try
         {

@@ -1,10 +1,5 @@
 namespace WeatherApp.Domain.Clima;
 
-/// <summary>
-/// Leitura de clima atual já traduzida do formato do provedor para um modelo neutro.
-/// É o <i>anti-corruption layer</i> do Adapter: nenhum JSON da OpenWeatherMap atravessa
-/// esta fronteira, então trocar de provedor não toca em regra de negócio.
-/// </summary>
 /// <param name="Cidade">Nome canônico devolvido pelo provedor (ex.: "Curitiba").</param>
 /// <param name="PaisCodigo">Código ISO do país (ex.: "BR").</param>
 /// <param name="Temperatura">Temperatura no instante da medição, em °C.</param>

@@ -54,15 +54,10 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
         EmailJaCadastradoException => StatusCodes.Status409Conflict,
 
         CredenciaisInvalidasException => StatusCodes.Status401Unauthorized,
-
-        // 400 enquanto a identificação vem por header; passa a 401 quando os endpoints
-        // de favoritos exigirem [Authorize] (o próprio pipeline responde antes daqui).
         UsuarioNaoIdentificadoException => StatusCodes.Status400BadRequest,
 
-        // Provedor fora do ar é indisponibilidade temporária, não erro do cliente.
         ProvedorClimaIndisponivelException => StatusCodes.Status503ServiceUnavailable,
 
-        // Chave inválida/ausente é configuração nossa: 502, não 503 nem 500.
         FalhaIntegracaoProvedorException => StatusCodes.Status502BadGateway,
 
         _ => StatusCodes.Status500InternalServerError

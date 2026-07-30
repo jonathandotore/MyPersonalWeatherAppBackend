@@ -20,17 +20,20 @@ public sealed class Usuario
     public Guid Id { get; private set; }
     public string Nome { get; private set; } = string.Empty;
 
-    /// <summary>Nulo em usuário anônimo. Ver índice único filtrado em <c>UsuarioConfiguration</c>.</summary>
+    /// <summary>
+    /// Nulo em usuário anônimo. Ver índice único filtrado em <c>UsuarioConfiguration</c>.
+    /// </summary>
     public string? Email { get; private set; }
 
-    /// <summary>Nulo em usuário anônimo — ninguém autentica sem se registrar.</summary>
+    /// <summary>
+    /// Nulo em usuário anônimo — ninguém autentica sem se registrar.
+    /// </summary>
     public string? SenhaHash { get; private set; }
 
     public DateTime DataCriacao { get; private set; }
 
     public bool EhAnonimo => Email is null;
 
-    // Construtor sem parâmetros exigido pelo EF Core para materializar a entidade.
     private Usuario() { }
 
     /// <summary>
@@ -72,6 +75,8 @@ public sealed class Usuario
         SenhaHash = senhaHash;
     }
 
-    /// <summary>E-mail é comparado case-insensitive; guardamos já normalizado.</summary>
+    /// <summary>
+    /// E-mail é comparado case-insensitive; guardamos já normalizado.
+    /// </summary>
     public static string NormalizarEmail(string email) => email.Trim().ToLowerInvariant();
 }

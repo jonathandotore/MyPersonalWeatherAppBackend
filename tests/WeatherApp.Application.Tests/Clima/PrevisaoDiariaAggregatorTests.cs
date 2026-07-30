@@ -151,8 +151,8 @@ public class PrevisaoDiariaAggregatorTests
     }
 
     [Theory]
-    [InlineData(12)] // 5 blocos hoje
-    [InlineData(15)] // 4 blocos hoje
+    [InlineData(12)]
+    [InlineData(15)]
     public void Dia_corrente_e_mantido_quando_tem_cobertura_suficiente(int horaUtcDoPrimeiroBloco)
     {
         var primeiro = new DateTimeOffset(2026, 7, 30, horaUtcDoPrimeiroBloco, 0, 0, TimeSpan.Zero);

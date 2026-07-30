@@ -2,16 +2,8 @@ namespace WeatherApp.Domain.Clima;
 
 /// <summary>
 /// Previsão como o provedor realmente entrega: uma lista plana de blocos de 3 horas
-/// (40 deles no plano free da OpenWeatherMap, cobrindo ~120 h), <b>não</b> dias agregados.
-/// Colapsar isso em 5 dias é responsabilidade do <c>PrevisaoDiariaAggregator</c>, na
-/// Application — mantido fora do Adapter para poder ser testado sem HTTP.
 /// </summary>
-public sealed record PrevisaoBruta(
-    string Cidade,
-    string? PaisCodigo,
-    /// <summary>Offset do fuso local em segundos; base para agrupar por data local.</summary>
-    int OffsetSegundos,
-    IReadOnlyList<BlocoPrevisao> Blocos);
+public sealed record PrevisaoBruta(string Cidade, string? PaisCodigo, int OffsetSegundos, IReadOnlyList<BlocoPrevisao> Blocos);
 
 /// <summary>Um bloco de 3 horas da previsão.</summary>
 /// <param name="InstanteUtc">Instante do bloco, em UTC. O provedor também manda uma string

@@ -21,9 +21,6 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
 
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 
-// O frontend Angular manda o header customizado X-Usuario-Id; sem AllowAnyHeader (ou o header
-// listado explicitamente) o preflight o rejeita e o erro que chega ao browser é um CORS opaco,
-// difícil de diagnosticar.
 var origens = builder.Configuration.GetSection("Cors:OrigensPermitidas").Get<string[]>() ?? [];
 builder.Services.AddCors(o => o.AddPolicy(PoliticaCors, p => p
     .WithOrigins(origens)
@@ -34,19 +31,12 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Registrado SEMPRE, inclusive em Development. Se ficasse atrás de um IsDevelopment(), em dev a
-// Developer Exception Page devolveria HTML e o frontend quebraria ao tentar parsear ProblemDetails
-// — justamente no ambiente em que o frontend roda.
 app.UseExceptionHandler();
-
-// Faz 404 de rota inexistente também sair como ProblemDetails, e não com corpo vazio.
 app.UseStatusCodePages();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    // O .NET 10 gera o documento OpenAPI nativamente, mas não traz UI (os templates deixaram de
-    // incluir Swashbuckle desde o .NET 9). Scalar fornece a UI navegável.
     app.MapScalarApiReference();
 }
 

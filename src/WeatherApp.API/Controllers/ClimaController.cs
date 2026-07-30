@@ -17,9 +17,7 @@ public sealed class ClimaController(ClimaService clima) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<ClimaAtualDto>> ObterClimaAtual(
-        string cidade,
-        CancellationToken ct)
+    public async Task<ActionResult<ClimaAtualDto>> ObterClimaAtual(string cidade, CancellationToken ct)
         => Ok(await clima.ObterClimaAtualAsync(cidade, ct));
 
     /// <summary>Previsão para os próximos 5 dias, com máxima/mínima e ícone por dia.</summary>
@@ -28,8 +26,6 @@ public sealed class ClimaController(ClimaService clima) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<PrevisaoDto>> ObterPrevisao(
-        string cidade,
-        CancellationToken ct)
+    public async Task<ActionResult<PrevisaoDto>> ObterPrevisao(string cidade, CancellationToken ct)
         => Ok(await clima.ObterPrevisao5DiasAsync(cidade, ct));
 }

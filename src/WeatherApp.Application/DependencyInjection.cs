@@ -7,10 +7,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        // TimeProvider.System injetado explicitamente em vez de DateTime.UtcNow espalhado:
-        // é o que permite testar a agregação de previsão com um "agora" controlado.
+        // TimeProvider.System injetado explicitamente em vez de DateTime.UtcNow espalhado.
         services.TryAddSingletonTimeProvider();
-
         services.AddScoped<ClimaService>();
 
         return services;
@@ -19,8 +17,6 @@ public static class DependencyInjection
     private static void TryAddSingletonTimeProvider(this IServiceCollection services)
     {
         if (!services.Any(d => d.ServiceType == typeof(TimeProvider)))
-        {
             services.AddSingleton(TimeProvider.System);
-        }
     }
 }
