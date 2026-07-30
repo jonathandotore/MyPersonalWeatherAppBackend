@@ -1,0 +1,16 @@
+# Normaliza fim de linha no repositório (LF), deixando o checkout nativo por SO.
+* text=auto
+
+*.cs        text diff=csharp
+*.csproj    text
+*.sln       text eol=crlf
+*.props     text
+*.json      text
+*.md        text
+*.yml       text
+*.sql       text
+
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.dll       binary

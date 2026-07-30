@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\WeatherApp.Application\WeatherApp.Application.csproj" />
+    <ProjectReference Include="..\WeatherApp.Domain\WeatherApp.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.10" />
+    <!-- Wrapper oficial sobre Polly v8: AddStandardResilienceHandler (retry + circuit breaker + timeouts). -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
+    <!-- PasswordHasher<T> standalone, sem subir o ASP.NET Core Identity completo. -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+    <!-- Habilita ValidateDataAnnotations() no Options Pattern (validação no startup). -->
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.10" />
+    <!--
+      Alinhado com o que o Microsoft.AspNetCore.Authentication.JwtBearer 10.0.10
+      resolve transitivamente (Protocols.OpenIdConnect 8.19.2). Manter a mesma
+      versão evita downgrade/NU1605, que com TreatWarningsAsErrors quebraria o build.
+      Usamos JsonWebTokenHandler (handler atual) em vez de JwtSecurityTokenHandler.
+    -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
+  </ItemGroup>
+
+</Project>
