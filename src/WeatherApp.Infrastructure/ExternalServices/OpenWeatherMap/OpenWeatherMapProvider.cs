@@ -3,6 +3,8 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 using WeatherApp.Domain.Clima;
 using WeatherApp.Domain.Exceptions;
 using WeatherApp.Domain.Interfaces;
@@ -92,9 +94,13 @@ public sealed class OpenWeatherMapProvider(
             resposta = await http.GetAsync(url, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                         or TimeoutRejectedException or BrokenCircuitException
                                       && !ct.IsCancellationRequested)
         {
-            // Timeout, DNS, circuito aberto pelo Polly, conexão recusada...
+            // Timeout de rede, DNS, conexão recusada (HttpRequestException/TaskCanceledException)
+            // e timeout/circuito abertos pelo próprio Polly (TimeoutRejectedException,
+            // BrokenCircuitException) — este último NÃO deriva de TaskCanceledException, embrulha
+            // um TaskCanceledException por dentro, então precisa de captura própria.
             // A mensagem original nunca vai para o cliente: pode conter a URL com appid.
             logger.LogError(ex, "Falha de rede ao consultar a OpenWeatherMap em {Rota}.", rota);
             throw new ProvedorClimaIndisponivelException(
