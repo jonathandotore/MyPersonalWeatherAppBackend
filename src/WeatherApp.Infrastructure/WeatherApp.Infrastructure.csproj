@@ -13,6 +13,8 @@
     <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+    <!-- Habilita ValidateDataAnnotations() no Options Pattern (validação no startup). -->
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.10" />
     <!--
       Alinhado com o que o Microsoft.AspNetCore.Authentication.JwtBearer 10.0.10
       resolve transitivamente (Protocols.OpenIdConnect 8.19.2). Manter a mesma

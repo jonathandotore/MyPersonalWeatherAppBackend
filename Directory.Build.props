@@ -7,7 +7,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      NÃO ligar InvariantGlobalization: o Microsoft.Data.SqlClient (usado pelo provider do
+      SQL Server) falha no boot com "Globalization Invariant Mode is not supported".
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
 </Project>

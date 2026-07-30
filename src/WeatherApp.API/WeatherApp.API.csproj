@@ -3,8 +3,13 @@
   <PropertyGroup>
     <!-- Alimenta os summaries dos controllers no documento OpenAPI (M5.4). -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- Controllers sem XML doc não devem quebrar o build com warnings-as-errors. -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!--
+      CS1591: membro público sem XML doc — não queremos documentar tudo obrigatoriamente.
+      CS1573: parâmetro sem <param> quando outros têm — documentar o CancellationToken de
+              cada action seria só ruído.
+      Ambos são warnings de documentação, e TreatWarningsAsErrors os tornaria bloqueantes.
+    -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
     <UserSecretsId>weatherapp-api-secrets</UserSecretsId>
   </PropertyGroup>
 
