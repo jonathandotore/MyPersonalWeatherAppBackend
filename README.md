@@ -1,7 +1,7 @@
 # MyPersonalWeatherApp — Backend
 
 API REST em **.NET 10** para consulta de clima e previsão do tempo, integrando com a
-**OpenWeatherMap** e persistindo cidades favoritas em **SQL Server**.
+**OpenWeatherMap** e persistindo cidades favoritas em **SQL Server**, com autenticação JWT.
 
 Teste técnico — nível pleno. O planejamento de arquitetura que originou este código está
 versionado em [`planejamento-backend-dotnet.md`](./planejamento-backend-dotnet.md); este README
@@ -24,34 +24,28 @@ documenta o que foi **efetivamente implementado** e, principalmente, **o porquê
 - [Estratégia de testes](#estratégia-de-testes)
 - [Desvios deliberados do planejamento](#desvios-deliberados-do-planejamento)
 - [Como rodar](#como-rodar)
-- [Próximos passos](#próximos-passos)
+- [Fora de escopo / evolução futura](#fora-de-escopo--evolução-futura)
 
 ---
 
 ## Status de implementação
 
-Documentar isto explicitamente é proposital: é mais útil saber exatamente onde o projeto está
-do que ler uma lista de recursos que não existem.
-
 | Fase | Entrega | Status |
 |---|---|:--:|
 | 0 | Estrutura da solution, 4 camadas, configuração, segredos | ✅ |
 | 1 | Domínio, EF Core + migration, integração OpenWeatherMap, clima atual | ✅ |
-| 2 | Previsão de 5 dias | ✅ |
-| 2 | CRUD de favoritos, validação, usuário implícito | ⬜ |
-| 3 | JWT (bônus) | ⬜ |
-| 4 | Cache (Decorator) + resiliência (Polly) | ⬜ |
-| 5 | Testes de serviços, OpenAPI completo | 🟡 parcial |
+| 2 | Previsão de 5 dias, CRUD de favoritos, validação, usuário implícito | ✅ |
+| 3 | JWT (bônus) | ✅ |
+| 4 | Cache (Decorator) + resiliência (Polly) | ✅ |
+| 5 | Testes de serviços, OpenAPI completo | ✅ |
 
-**Funcionando hoje, verificado ponta a ponta:** `GET /api/clima/{cidade}` e
-`GET /api/clima/{cidade}/previsao`, tratamento de erros via `ProblemDetails`, documentação
-OpenAPI navegável, banco criado por migration, 19 testes unitários passando.
+**Checklist do enunciado, tudo entregue:** busca de clima por cidade, previsão de 5 dias, CRUD de
+favoritos persistido em SQL Server, tratamento de erros e validação de entrada, JWT protegendo
+favoritos (bônus), Swagger/OpenAPI documentado, README com decisões de arquitetura.
 
-**Transparência sobre pacotes declarados antecipadamente:** `Microsoft.Extensions.Http.Resilience`,
-`Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.Identity.Core`,
-`Microsoft.IdentityModel.JsonWebTokens` e `FluentValidation` já estão referenciados nos `.csproj`
-porque as versões foram todas validadas de uma vez na fase 0, mas **ainda não estão em uso** —
-entram nas fases 2 a 4. Preferi declarar isso a deixar o leitor descobrir sozinho.
+**38 testes unitários passando**, banco criado por migration, cache e resiliência confirmados ao
+vivo (não só configurados) — ver [Decisões técnicas relevantes](#decisões-técnicas-relevantes) e
+[Estratégia de testes](#estratégia-de-testes).
 
 ---
 
@@ -64,7 +58,13 @@ entram nas fases 2 a 4. Preferi declarar isso a deixar o leitor descobrir sozinh
 | **Entity Framework Core** | 10.0.10 | Produtividade em CRUD e, principalmente, **migrations versionadas**: o schema nasce do código e é reproduzível por quem clona o repositório |
 | **SQL Server Express** | 2022 | Exigido pelo enunciado. Docker não estava disponível na máquina de desenvolvimento, então a instância local substitui o `docker-compose` sugerido no planejamento |
 | **Microsoft.AspNetCore.OpenApi** | 10.0.10 | Geração nativa do documento OpenAPI no .NET 10 |
-| **Scalar.AspNetCore** | 2.16.16 | UI navegável para o documento OpenAPI ([ver justificativa](#1-scalar-em-vez-de-swagger-ui)) |
+| **Scalar.AspNetCore** | 2.16.16 | UI navegável para o documento OpenAPI, com suporte a Bearer ([ver justificativa](#1-scalar-em-vez-de-swagger-ui)) |
+| **Microsoft.AspNetCore.Authentication.JwtBearer** | 10.0.10 | Validação de token nos endpoints protegidos |
+| **Microsoft.IdentityModel.JsonWebTokens** | 8.19.2 | `JsonWebTokenHandler` — handler atual de emissão de JWT, mais leve que o `JwtSecurityTokenHandler` legado |
+| **Microsoft.Extensions.Identity.Core** | 10.0.10 | `PasswordHasher<Usuario>` (PBKDF2 com salt por usuário), sem subir o ASP.NET Core Identity inteiro |
+| **Microsoft.Extensions.Http.Resilience** | 10.8.0 | Wrapper oficial sobre Polly v8: `AddStandardResilienceHandler` dá retry + circuit breaker + timeouts numa linha |
+| **Microsoft.Extensions.Caching.Memory** | 10.0.10 | `IMemoryCache` para o Decorator de cache do provedor de clima |
+| **FluentValidation** | 12.1.1 | Validação de entrada expressiva, independente de DataAnnotations |
 | **xUnit v3** | 3.2.2 | Linha atual do xUnit |
 | **Shouldly** | 4.3.0 | Asserções legíveis ([ver justificativa](#3-shouldly-em-vez-de-fluentassertions)) |
 | **NSubstitute** | 6.0.0 | Substitutos de teste com sintaxe enxuta, sem `.Object` em toda linha |
@@ -75,9 +75,10 @@ entram nas fases 2 a 4. Preferi declarar isso a deixar o leitor descobrir sozinh
 Centralizar evita repetir cinco vezes e evita drift entre projetos:
 
 - `Nullable=enable` — nullability como parte do contrato dos tipos, não como convenção
-- `TreatWarningsAsErrors=true` — **decisão que já se pagou**: foi ela que transformou o aviso
-  `NU1903` (vulnerabilidade em pacote transitivo) em falha de build, forçando a correção
-  imediatamente em vez de deixá-la passar silenciosamente
+- `TreatWarningsAsErrors=true` — **decisão que já se pagou** três vezes: transformou o `NU1903`
+  (vulnerabilidade em pacote transitivo) em falha de build, pegou um `InvariantGlobalization`
+  incompatível com o `Microsoft.Data.SqlClient`, e forçou tratar `Polly.Timeout.TimeoutRejectedException`
+  no provider antes que o código chegasse a produção
 - `ImplicitUsings=enable`, `LangVersion=latest`
 - `InvariantGlobalization=false` — **obrigatório**: com globalização invariante o
   `Microsoft.Data.SqlClient` aborta no startup com *"Globalization Invariant Mode is not supported"*
@@ -92,14 +93,16 @@ dependências: elas só apontam para dentro.
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  WeatherApp.API            Controllers, Program, DI,     │
-│                            ProblemDetails, CORS, OpenAPI │
+│                            JWT, ProblemDetails, CORS,     │
+│                            OpenAPI                        │
 └───────────────┬──────────────────────────┬───────────────┘
                 │                          │
                 ▼                          ▼
 ┌───────────────────────────┐  ┌───────────────────────────┐
 │  WeatherApp.Application   │  │ WeatherApp.Infrastructure │
 │  Casos de uso, DTOs,      │◄─┤ EF Core, DbContext,       │
-│  agregação de previsão    │  │ OpenWeatherMapProvider    │
+│  agregação de previsão    │  │ OpenWeatherMapProvider,   │
+│                           │  │ cache, resiliência, JWT   │
 └───────────────┬───────────┘  └───────────┬───────────────┘
                 │                          │
                 ▼                          ▼
@@ -148,8 +151,8 @@ O .NET 10 melhorou bastante as Minimal APIs (inclusive validação nativa via `A
 Ainda assim optei por Controllers: agrupam por recurso, deixam `[Authorize]` e
 `[ProducesResponseType]` declarativos junto da action, e são mais fáceis de varrer para quem está
 revisando o código. É preferência de time, não questão técnica — e vale registrar que
-`AddValidation()` do .NET 10 **só funciona em Minimal APIs**, o que muda a estratégia de validação
-da fase 2 (ver [próximos passos](#próximos-passos)).
+`AddValidation()` do .NET 10 **só funciona em Minimal APIs**, o que é o motivo do
+`ValidacaoActionFilter` próprio descrito em [Design patterns aplicados](#design-patterns-aplicados).
 
 ---
 
@@ -158,22 +161,23 @@ da fase 2 (ver [próximos passos](#próximos-passos)).
 | Padrão | Onde | Por que |
 |---|---|---|
 | **Adapter** (*anti-corruption layer*) | `IWeatherProvider` → `OpenWeatherMapProvider` | O enunciado permite dois provedores. A interface devolve modelos neutros do domínio (`ClimaAtualBruto`, `PrevisaoBruta`), então **nenhum JSON da OpenWeatherMap atravessa para a Application** |
+| **Decorator** | `CachedWeatherProvider` envolvendo `OpenWeatherMapProvider` | Cache transparente para quem consome `IWeatherProvider` — `ClimaService` e `FavoritosService` nem sabem que ele existe. Ver [decisão de cache](#11-cache-decorator-registrado-pelo-tipo-concreto-nunca-singleton) |
 | **Repository** | `ICidadeFavoritaRepository`, `IUsuarioRepository` | Abstrai persistência e permite testar serviços sem banco. Detalhe deliberado: **toda** assinatura recebe `usuarioId` — não existe "listar todos" nem "obter por id" sem escopo de usuário, então vazamento de dados entre usuários fica difícil de escrever por acidente |
 | **DTO** | `Application/DTOs` | Desacopla o contrato HTTP dos modelos de domínio/EF. Evita que uma mudança de entidade quebre o frontend, e impede vazar campo interno |
-| **Options Pattern** | `OpenWeatherMapSettings` com `ValidateDataAnnotations().ValidateOnStart()` | Configuração tipada, sem *magic strings*. O `ValidateOnStart` é o ponto importante: sem ele, uma `ApiKey` ausente só apareceria como 401 do provedor na primeira requisição — com ele, a aplicação **não sobe** e diz exatamente o que falta |
+| **Options Pattern** | `OpenWeatherMapSettings`, `JwtSettings`, `WeatherCacheSettings`, todos com `ValidateDataAnnotations().ValidateOnStart()` | Configuração tipada, sem *magic strings*. O `ValidateOnStart` é o ponto importante: sem ele, uma `ApiKey`/`Jwt:Chave` ausente só apareceria como erro na primeira requisição — com ele, a aplicação **não sobe** e diz exatamente o que falta |
 | **Dependency Injection** | Nativo, em todas as camadas | Inversão de dependência e testabilidade |
 | **Exception Handling centralizado** | `IExceptionHandler` → `DomainExceptionHandler` | Um único ponto traduz exceção de domínio em status HTTP. Zero `try/catch` repetido em controller |
-| **Unit of Work** (implícito) | `WeatherAppDbContext` | O `SaveChangesAsync` já comita as mudanças de todos os repositórios na mesma transação. Formalizar um `IUnitOfWork` separado só se pagaria com múltiplos repositórios em transações distintas — não é o caso |
-| **Função pura / Strategy de agregação** | `PrevisaoDiariaAggregator` | A única lógica não-trivial do projeto, isolada **sem I/O e sem relógio ambiente** (o "agora" entra por parâmetro). É o que permite testá-la de forma determinística |
-
-**Previstos para as próximas fases:** **Decorator** (`CachedWeatherProvider` envolvendo o provider
-real, com `IMemoryCache`) e **Retry/Circuit Breaker** (via `AddStandardResilienceHandler`).
+| **Unit of Work** (implícito) | `WeatherAppDbContext` | O `SaveChangesAsync` já comita as mudanças de todos os repositórios na mesma transação — inclusive o usuário anônimo criado junto com o primeiro favorito. Formalizar um `IUnitOfWork` separado só se pagaria com múltiplos repositórios em transações distintas — não é o caso |
+| **Função pura / Strategy de agregação** | `PrevisaoDiariaAggregator` | A lógica mais delicada do projeto, isolada **sem I/O e sem relógio ambiente** (o "agora" entra por parâmetro). É o que permite testá-la de forma determinística |
+| **Retry + Circuit Breaker** | `AddStandardResilienceHandler` no `HttpClient` de `OpenWeatherMapProvider` | Protege contra instabilidade real do provedor. Tuning explícito, não os defaults — ver [decisão 12](#12-circuit-breaker-com-os-defaults-nunca-abre-numa-demonstração) |
+| **Validação com filtro próprio** | `ValidacaoActionFilter` + `IValidator<T>` do FluentValidation | `FluentValidation.AspNetCore` está descontinuado e `AddValidation()` do .NET 10 só cobre Minimal APIs — um `IAsyncActionFilter` de ~40 linhas resolve sem dependência extra |
 
 ---
 
 ## Modelagem de dados
 
-Duas tabelas, criadas pela migration `InicialSchema`.
+Duas tabelas, criadas por uma **única** migration (`InicialSchema`) — nenhuma fase seguinte
+(incluindo o JWT) exigiu alterar o schema.
 
 ```
 Usuarios                            CidadesFavoritas
@@ -193,12 +197,20 @@ UQ_Usuarios_Email (único, FILTRADO) DataCriacao datetime2
 
 - **Anônimo** — criado a partir do GUID estável que o frontend guarda no LocalStorage, antes de
   existir autenticação. `Email` e `SenhaHash` são `NULL`.
-- **Registrado** — tem e-mail e hash de senha.
+- **Registrado** — tem e-mail e hash de senha, autentica via JWT.
 
 `Usuario.Promover()` converte um anônimo em registrado **sem trocar o `Id`**. Como
-`CidadesFavoritas.UsuarioId` referencia essa PK, **os favoritos criados antes do login são
-preservados automaticamente** e a entrada do JWT na fase 3 **não exigirá nenhuma migration de
-schema** — que é exatamente a promessa feita no planejamento.
+`CidadesFavoritas.UsuarioId` referencia essa PK, favoritos criados antes do login são preservados
+automaticamente. Confirmado com `dotnet ef migrations has-pending-model-changes` depois do JWT
+entrar: **nenhuma alteração pendente** — a promessa do planejamento se cumpriu.
+
+> ⚠️ **Nuance descoberta na fase 3, vale registrar por não ser óbvia:** com `[Authorize]` agora
+> protegendo `FavoritosController`, não é mais possível criar um favorito 100% anônimo *pela API* —
+> o pipeline de autenticação barra a requisição antes de chegar no controller. `Promover()` continua
+> correto e testado (inclusive [ao vivo](#3-jwt-mapinboundclaims-e-promoção-de-usuário-anônimo)),
+> mas hoje ele serve para **dado legado** (um usuário que favoritou cidades numa versão anterior da
+> API, antes do JWT existir), não para o fluxo normal desta versão. Documentado aqui porque não dá
+> para perceber isso só lendo o código dos dois controllers separadamente.
 
 ### Por que o índice único de `Email` é FILTRADO
 
@@ -238,9 +250,14 @@ Documentação navegável: **`/scalar/v1`** · documento OpenAPI: **`/openapi/v1
 |---|---|---|---|
 | `GET` | `/api/clima/{cidade}` | pública | Temperatura atual, condição + ícone, **máx/mín do dia**, umidade |
 | `GET` | `/api/clima/{cidade}/previsao` | pública | Exatamente 5 dias: data, máx/mín, condição + ícone |
+| `GET` | `/api/favoritos` | **JWT** | Favoritos do usuário autenticado |
+| `POST` | `/api/favoritos` | **JWT** | Cria um favorito; valida a cidade no provedor antes de persistir |
+| `DELETE` | `/api/favoritos/{id}` | **JWT** | Remove um favorito; `204` |
+| `POST` | `/api/auth/register` | pública | Cria conta (ou promove anônimo legado) e devolve token |
+| `POST` | `/api/auth/login` | pública | Autentica e devolve token |
 
 `{cidade}` aceita `"Nome"` ou `"Nome,PaisCodigo"` (ex.: `São José do Rio Preto,BR`) para
-desambiguar homônimas.
+desambiguar homônimas — `PaisCodigo` é o código ISO do **país** (`BR`), não de estado/UF.
 
 ### `GET /api/clima/São José do Rio Preto` → `200`
 
@@ -295,6 +312,50 @@ O campo **`fonteMaxMin`** existe para tornar uma limitação explícita em vez d
 `data` é a data **local** da cidade consultada, não UTC. `dias` tem sempre 5 itens em ordem
 cronológica (ver [agregação](#2-cinco-dias-a-partir-de-seis-buckets)).
 
+### `POST /api/auth/register` → `200`
+
+```json
+// request
+{ "nome": "Maria Silva", "email": "maria@teste.com", "senha": "SenhaForte123" }
+```
+```json
+// response — resposta real
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiraEmUtc": "2026-07-30T17:43:19.1831455Z"
+}
+```
+
+Erros: `409` (`EmailJaCadastradoException`) se o e-mail já existir; `400` `ValidationProblemDetails`
+para nome vazio, e-mail inválido ou senha com menos de 8 caracteres.
+
+`POST /api/auth/login` tem o mesmo formato de resposta; `401` genérico (`CredenciaisInvalidasException`)
+para e-mail inexistente **ou** senha errada — ver [tabela de mapeamento](#mapeamento-de-exceção--status-http)
+para o porquê da mensagem única.
+
+### `POST /api/favoritos` (autenticado) → `201`
+
+```json
+// request
+{ "nome": "Fortaleza", "paisCodigo": "BR" }
+```
+```json
+// response — resposta real
+{
+  "id": "325d7e51-d658-435b-8b1e-33e9e085e83d",
+  "nome": "Fortaleza",
+  "paisCodigo": "BR",
+  "latitude": -3.7227,
+  "longitude": -38.5247,
+  "dataCriacao": "2026-07-30T16:43:30.4372233Z"
+}
+```
+
+`nome`/`paisCodigo`/`latitude`/`longitude` vêm do que a OpenWeatherMap resolveu para a consulta —
+não necessariamente o que o cliente digitou (ver [decisão de nome canônico](#4-nome-canônico-do-provedor-em-vez-do-digitado)).
+Duplicata devolve `409`; cidade que o provedor não reconhece devolve `404`; sem o header
+`Authorization` devolve `401`.
+
 ### Formato de erro
 
 Todos os erros seguem **`ProblemDetails`** (RFC 9457), com `Content-Type: application/problem+json`.
@@ -314,9 +375,14 @@ O frontend pode tratar erro de forma uniforme.
 `traceId` é incluído em toda resposta de erro para correlacionar com o log do servidor.
 
 > **Atenção, time de frontend:** existem **duas formas** de erro, e a diferença importa.
-> Erros de **validação** (fase 2) usarão `ValidationProblemDetails`, que tem um campo extra
-> `errors` (`{ "campo": ["mensagem"] }`) produzido automaticamente pelo `[ApiController]`.
+> Erros de **validação** usam `ValidationProblemDetails`, que tem um campo extra
+> `errors` (`{ "campo": ["mensagem"] }`) produzido pelo `ValidacaoActionFilter`/`[ApiController]`.
 > Os demais erros usam `ProblemDetails`, **sem** `errors`. Trate `errors` como opcional.
+>
+> Resposta real de validação (`POST /api/favoritos` com `nome` vazio):
+> ```json
+> {"title":"Dados inválidos","status":400,"instance":"/api/favoritos","errors":{"Nome":["O nome da cidade é obrigatório.","O nome da cidade deve ter ao menos 2 caracteres."]}}
+> ```
 
 ### Mapeamento de exceção → status HTTP
 
@@ -329,16 +395,16 @@ Centralizado em `DomainExceptionHandler`:
 | `FavoritoDuplicadoException` | `409` | Conflito com o estado atual |
 | `EmailJaCadastradoException` | `409` | Conflito |
 | `CredenciaisInvalidasException` | `401` | Mensagem genérica para e-mail inexistente **e** senha errada — distinguir os casos entregaria um oráculo de enumeração de usuários |
-| `UsuarioNaoIdentificadoException` | `400` | Falta identificação (passa a `401` quando o JWT entrar) |
-| `ProvedorClimaIndisponivelException` | `503` + `Retry-After: 60` | Indisponibilidade temporária de terceiro, não erro do cliente |
+| `UsuarioNaoIdentificadoException` | `401` | Na prática, hoje o middleware `[Authorize]` intercepta antes dessa exceção ser lançada — mantida como defesa em profundidade |
+| `ProvedorClimaIndisponivelException` | `503` + `Retry-After: 60` | Indisponibilidade temporária de terceiro (inclusive timeout/circuito aberto pelo Polly — ver [decisão 10](#10-timeoutrejectedexception-e-brokencircuitexception-também-precisam-de-catch)), não erro do cliente |
 | `FalhaIntegracaoProvedorException` | `502` | Chave inválida/ausente: **configuração nossa**, não culpa do cliente nem instabilidade do provedor |
 
 ---
 
 ## Decisões técnicas relevantes
 
-As três primeiras são armadilhas reais, descobertas medindo a API de verdade — não deduzidas da
-documentação. Todas estão cobertas por teste para não regredirem.
+As primeiras são armadilhas reais, descobertas medindo a API e o comportamento do runtime de
+verdade — não deduzidas da documentação. Todas estão cobertas por teste para não regredirem.
 
 ### 1. `main.temp_max` / `temp_min` **não são** a máxima e a mínima do dia
 
@@ -359,11 +425,12 @@ o tipo de erro que passa em revisão porque o código *parece* certo.
 **Solução:** `ClimaService.ObterClimaAtualAsync` chama **os dois** endpoints — `/weather` para
 temperatura, condição, ícone e umidade; `/forecast` para derivar a amplitude verdadeira do dia a
 partir dos blocos de 3 horas. A temperatura atual entra no cálculo de máx/mín, senão seria possível
-exibir "atual 26°, máxima 24°" — inconsistência óbvia para quem está olhando a tela.
+exibir "atual 26°, máxima 24°" — inconsistência óbvia para quem está olhando a tela. Coberto por
+teste anti-regressão em `ClimaServiceTests` reproduzindo exatamente os valores medidos acima.
 
-O custo da segunda chamada será praticamente nulo quando o `CachedWeatherProvider` entrar (fase 4),
-porque as duas telas compartilham a mesma entrada de cache da previsão. **Este é o argumento real a
-favor do Decorator neste projeto** — ele deixa de ser enfeite e passa a viabilizar a correção.
+O custo da segunda chamada é praticamente nulo graças ao `CachedWeatherProvider` (fase 4), que
+compartilha a mesma entrada de cache entre a tela de clima atual e a de previsão — **este é o
+argumento real a favor do Decorator neste projeto**, não só um enfeite de padrão.
 
 ### 2. Cinco dias a partir de **seis** buckets
 
@@ -398,7 +465,35 @@ Sobre o passo 6, a alternativa avaliada foi usar a condição **modal** (mais fr
 defensável, mas exige uma regra de desempate arbitrária quando duas condições empatam. O critério
 do meio-dia é determinístico e corresponde ao que o usuário entende como "o tempo daquele dia".
 
-### 3. Agrupar por data **UTC** desloca todos os cards em um dia
+### 3. JWT: `MapInboundClaims` e promoção de usuário anônimo
+
+Duas decisões da fase 3, testadas ao vivo, não só configuradas:
+
+**`MapInboundClaims = false` dos dois lados (emissão e validação).** `JwtBearerOptions.MapInboundClaims`
+tem default `true` e remapeia a claim `sub` para `ClaimTypes.NameIdentifier` — ler
+`User.FindFirst("sub")` depois disso retorna `null`. `HttpUsuarioAtualProvider` já lia `sub`
+literalmente desde a fase 2 (quando ainda vinha só do header anônimo); manter o mesmo nome de claim
+na emissão do token evitou reescrever essa classe.
+
+**Promoção de anônimo→registrado testada com dado legado de verdade.** Como
+`[Authorize]` bloqueia a criação de favorito anônimo pela API (ver [nota na modelagem](#a-entidade-usuario-tem-duas-variantes-na-mesma-tabela)),
+o teste ao vivo inseriu um usuário anônimo + favorito **direto no banco** via `sqlcmd` (simulando
+alguém que usou o app antes do JWT existir) e então chamou `POST /api/auth/register` com o mesmo
+GUID no header `X-Usuario-Id`. Resultado: o `sub` do token emitido foi o mesmo GUID do usuário
+legado, o favorito apareceu no `GET /api/favoritos` autenticado, e a tabela `Usuarios` ficou com
+**uma linha, não duas** — `Promover()` fez `UPDATE`, não `INSERT`. O mesmo cenário está coberto
+sem I/O em `AuthServiceTests.RegistrarAsync_promove_usuario_anonimo_preservando_o_id`.
+
+### 4. Nome canônico do provedor em vez do digitado
+
+`FavoritosService.AdicionarAsync` consulta o provedor **antes** de persistir, por duas razões:
+valida que a cidade existe (404 em vez de gravar lixo) e captura o nome canônico + coordenadas. Um
+usuário que digita `"sao jose do rio preto"` tem o favorito salvo como `"São José do Rio Preto"` —
+o que o provedor devolveu, não o que foi digitado. O índice `UQ_Usuario_Cidade` do banco é o
+backstop final contra duas requisições concorrentes criando o mesmo favorito: `CidadeFavoritaRepository`
+captura a violação (`SqlException` 2601/2627) e traduz para `FavoritoDuplicadoException` (409).
+
+### 5. Agrupar por data **UTC** desloca todos os cards em um dia
 
 Consequência direta de fusos negativos: em São José do Rio Preto (UTC−3), o bloco de `00:00Z` do
 dia 31 é **21:00 do dia 30** local. Agrupar pela data UTC joga esse bloco no dia seguinte e
@@ -408,33 +503,83 @@ continuam plausíveis.
 O teste `Agrupamento_usa_data_LOCAL_e_nao_UTC` fixa isso escolhendo deliberadamente a asserção que
 **discrimina** os dois comportamentos (a mínima do dia difere entre eles; a máxima, não).
 
-### 4. Tratar `404` do provedor **antes** de `EnsureSuccessStatusCode`
+### 6. Tratar `404` do provedor **antes** de `EnsureSuccessStatusCode`
 
 Se `EnsureSuccessStatusCode()` roda primeiro, o 404 da OpenWeatherMap vira uma
 `HttpRequestException` genérica e o cliente recebe **500** em vez de **404** — falhando exatamente
 no requisito de "tratamento de erros". O provider testa o 404 explicitamente e o converte em
 `CidadeNaoEncontradaException`.
 
-### 5. `IExceptionHandler` em vez de middleware escrito à mão
+### 7. `IExceptionHandler` em vez de middleware escrito à mão
 
 O planejamento mencionava as duas opções. Escolhi a abstração nativa (.NET 8+): integra com
 `IProblemDetailsService`, é encadeável (vários handlers, em ordem de registro) e dispensa código de
 middleware manual.
 
-### 6. `UseExceptionHandler()` registrado **também** em Development
+### 8. `UseExceptionHandler()` registrado **também** em Development
 
 Os exemplos oficiais frequentemente colocam esse registro atrás de `if (!IsDevelopment())`. Isso é
 uma armadilha aqui: em Development a *Developer Exception Page* devolveria **HTML**, e o frontend
 Angular — que roda justamente contra Development — quebraria ao tentar parsear `ProblemDetails`.
 Registrado sempre.
 
-### 7. CORS com `AllowAnyHeader()`
+### 9. CORS com `AllowAnyHeader()`
 
-O frontend enviará o header customizado `X-Usuario-Id` (fase 2). Sem liberá-lo, o *preflight* o
-rejeita e o erro que chega ao browser é um CORS opaco, difícil de diagnosticar. Origens permitidas
-ficam em `appsettings.json` (`Cors:OrigensPermitidas`), não hard-coded.
+O frontend envia o header customizado `X-Usuario-Id` e, quando autenticado, `Authorization`. Sem
+liberar headers customizados, o *preflight* os rejeita e o erro que chega ao browser é um CORS
+opaco, difícil de diagnosticar. Origens permitidas ficam em `appsettings.json`
+(`Cors:OrigensPermitidas`), não hard-coded.
 
-### 8. Segredos fora do repositório
+### 10. `TimeoutRejectedException` e `BrokenCircuitException` também precisam de `catch`
+
+Achado real da fase 4, apontando a `BaseUrl` para uma porta morta. O `catch` original em
+`OpenWeatherMapProvider` cobria `HttpRequestException`/`TaskCanceledException` — o que parecia
+suficiente. Na prática, quando o Polly interrompe uma chamada por timeout total ou circuito aberto,
+ele lança `Polly.Timeout.TimeoutRejectedException`/`Polly.CircuitBreaker.BrokenCircuitException`,
+que **não derivam** de nenhuma das duas (a primeira embrulha um `TaskCanceledException` por dentro,
+mas o tipo externo é outro). Sem tratá-las, a exceção escapava do handler de domínio e virava
+**500** em vez de **503** — só apareceu testando contra um endpoint realmente inacessível, não
+lendo a documentação do Polly.
+
+### 11. Cache (Decorator) registrado pelo tipo concreto, nunca Singleton
+
+`CachedWeatherProvider` é exposto como `IWeatherProvider`; o provider real
+(`OpenWeatherMapProvider`) é registrado pelo **tipo concreto** via
+`AddHttpClient<OpenWeatherMapProvider>`, não por `IWeatherProvider`. Isso é o que garante que só o
+decorator seja visível ao resto da aplicação.
+
+**Scoped, nunca Singleton**: `AddHttpClient<T>` registra `T` como *Transient*; se o decorator fosse
+Singleton, capturaria para sempre o `HttpClient` transient do provider real (*captive dependency*),
+derrotando a rotação de handler do `IHttpClientFactory`. O estado do cache não se perde com isso —
+mora no `IMemoryCache`, que é singleton por conta própria.
+
+**Confirmado por contagem real de chamadas**, não só por leitura de código: duas requisições
+seguidas a `/api/clima/{mesma cidade}` geram apenas as 2 chamadas HTTP (`/weather` + `/forecast`)
+da primeira — a segunda gera zero. TTL de 10 min (clima atual) e 15 min (previsão), configuráveis
+em `WeatherCache` no `appsettings.json`. Chave normalizada (sem acento, minúscula, espaços
+colapsados) para que `"São Paulo"`, `"sao  paulo"` e `"SAO PAULO"` compartilhem a mesma entrada —
+só a chave é normalizada, a chamada ao provedor usa a string original.
+
+### 12. Circuit breaker: com os defaults, nunca abre numa demonstração
+
+`AddStandardResilienceHandler()` sem configuração usa `MinimumThroughput=100` em uma janela de
+30 s — inatingível no tráfego de um teste técnico. Tunado explicitamente, e o tuning **também**
+exigiu duas correções encontradas testando ao vivo, não deduzidas de antemão:
+
+- **`MinimumThroughput=4` não funcionava.** Com `AttemptTimeout=5s` e `MaxRetryAttempts=3`, uma
+  única requisição de entrada só completa **3** tentativas inteiras antes do `TotalRequestTimeout`
+  (20 s) cortar a 4ª pela metade — e uma tentativa cortada no meio não conta como falha registrada
+  pelo circuito. Ajustado para `MinimumThroughput=3`.
+- **`SamplingDuration=10s` (o mínimo exigido pelo validador, `2 × AttemptTimeout`) ainda não abria.**
+  Com backoff exponencial entre os 3 retries, as falhas de uma única requisição se espalham por
+  quase os 20 s inteiros do `TotalRequestTimeout` — mais que a janela de 10 s aguentava: a 1ª falha
+  "saía" da janela deslizante antes da 3ª acontecer. Ajustado para `SamplingDuration=20s`.
+
+Com os dois ajustes, medido ao vivo contra uma `BaseUrl` morta: a 1ª chamada falha em ~20 s (log
+mostra `OnCircuitOpened`); a 2ª chamada, imediatamente em seguida, falha em **59 ms** — o circuito
+realmente evita bater na rede de novo, em vez de só existir na configuração sem nunca disparar.
+
+### 13. Segredos fora do repositório
 
 `ApiKey` e chave JWT vivem em **`dotnet user-secrets`** (`%APPDATA%\Microsoft\UserSecrets\`), nunca
 em `appsettings.json`. O `appsettings.json` versionado contém só `BaseUrl`, unidades, idioma e TTLs.
@@ -442,14 +587,14 @@ em `appsettings.json`. O `appsettings.json` versionado contém só `BaseUrl`, un
 Como user-secrets **só é carregado em Development**, `ValidateOnStart()` é o que evita o pior modo
 de falha: subir em outro ambiente sem a chave e só descobrir na primeira requisição.
 
-### 9. `q={cidade}` em vez de geocodificar com `/geo/1.0/direct`
+### 14. `q={cidade}` em vez de geocodificar com `/geo/1.0/direct`
 
 Metade das chamadas e um único ponto de tratamento de "não encontrado". A busca por nome está
 marcada como *deprecated* pela OpenWeatherMap (funcional, sem correções futuras); a mitigação é
 persistir `lat`/`lon`. `/geo/1.0/direct` seria o caminho certo se houvesse requisito de
 autocomplete ou desambiguação de homônimas — não há.
 
-### 10. `Microsoft.OpenApi` fixado em 2.7.5
+### 15. `Microsoft.OpenApi` fixado em 2.7.5
 
 `Microsoft.AspNetCore.OpenApi 10.0.10` traz transitivamente `Microsoft.OpenApi 2.0.0`, afetada por
 **CVE-2026-49451** (recursão descontrolada ao *parsear* documentos OpenAPI). Corrigido a partir da
@@ -467,62 +612,80 @@ repositório precisa de um `restore` limpo.
 
 ## Estratégia de testes
 
-**19 testes, todos passando.** `dotnet test`
+**38 testes, todos passando.** `dotnet test`
 
 ```
 tests/WeatherApp.Application.Tests/
-└── Clima/PrevisaoDiariaAggregatorTests.cs
+├── Clima/PrevisaoDiariaAggregatorTests.cs   (17 testes)
+└── Services/
+    ├── ClimaServiceTests.cs                  (6 testes)
+    ├── FavoritosServiceTests.cs               (7 testes)
+    └── AuthServiceTests.cs                    (6 testes)
 ```
 
-### Por que a cobertura está concentrada no agregador
+### Por que a cobertura está concentrada no agregador e nos serviços
 
 Cobertura uniforme não é o objetivo — cobrir onde o **risco** está, é. Neste projeto:
 
-- controllers só delegam (um `Ok(await ...)`);
-- repositórios são `Where` + `SaveChanges`;
-- o provider é mapeamento de campo, verificável rodando a aplicação;
-- **o agregador concentra praticamente toda a lógica condicional do sistema**, e é o único ponto em
-  que um erro passa silenciosamente porque os números continuam plausíveis.
+- controllers só delegam (um `Ok(await ...)`), verificados ao vivo, não por teste de unidade;
+- repositórios são `Where` + `SaveChanges`, verificados contra o SQL Server real durante o
+  desenvolvimento de cada fase;
+- o provider é mapeamento de campo, também verificado ao vivo;
+- **o agregador e os serviços concentram toda a lógica condicional do sistema**, e são o único
+  lugar em que um erro passa silenciosamente porque os números continuam plausíveis.
 
-Por isso ele foi escrito como **função pura**: sem I/O, sem `DateTime.UtcNow` interno (o "agora"
-entra por parâmetro). É o que torna possível testar fuso, virada de dia e recorte de forma
-determinística, sem mock de HTTP e sem banco.
+Por isso `PrevisaoDiariaAggregator` foi escrito como **função pura**: sem I/O, sem `DateTime.UtcNow`
+interno (o "agora" entra por parâmetro). É o que torna possível testar fuso, virada de dia e
+recorte de forma determinística, sem mock de HTTP e sem banco.
 
 ### O que está coberto
 
-| Cenário | Por que importa |
-|---|---|
-| 40 blocos caem em 6 datas locais — nas duas distribuições reais (12:00Z e 15:00Z) | Sanidade da premissa; garante que a agregação não dependa de um split específico |
-| Retorna exatamente 5 dias, nos dois formatos | Requisito do enunciado |
-| Datas locais consecutivas começando hoje | Ordem e continuidade |
-| Cauda parcial do 6º dia é descartada | O bug do `GroupBy` ingênuo |
-| **Agrupamento por data local, não UTC** | Deslocamento de um dia em fuso negativo |
-| Máx/mín do dia vêm dos blocos daquele dia | Correção do cálculo |
-| Dia corrente descartado com < 3 blocos / mantido com cobertura | Consulta noturna |
-| Dias anteriores a hoje são ignorados | Filtro temporal |
-| Ícone do meio-dia local; noturno → diurno | Coerência visual |
-| Fuso **fracionário** (+05:30, Índia) | Garante que a lógica não assume offsets múltiplos de 1 h |
-| Lista vazia; menos de 5 dias disponíveis | Não estourar em entrada degenerada |
+**Agregação de previsão** (`PrevisaoDiariaAggregatorTests`): 40 blocos → 6 datas locais nas duas
+distribuições reais observadas; recorte em exatamente 5 dias; cauda parcial descartada; agrupamento
+por data **local**, não UTC; máx/mín por dia a partir dos blocos; dia corrente descartado com
+cobertura insuficiente; dias passados ignorados; ícone do meio-dia local com conversão
+noturno→diurno; fuso fracionário (Índia, +05:30); entradas degeneradas (lista vazia, poucos dias).
+
+**`ClimaService`**: máx/mín vêm do forecast e não de `main.temp_max`/`temp_min` (**anti-regressão**
+com os valores reais medidos — 23,92/23,92 → 22,41/31,62); temperatura atual entra no cálculo de
+máx/mín; `CidadeNaoEncontradaException` propaga sem chamar a previsão; degradação para
+`fonteMaxMin: "leitura-atual"` quando a previsão falha ou não tem bloco para hoje; previsão delega
+corretamente para o aggregator via `TimeProvider` controlado.
+
+**`FavoritosService`**: duplicata não chega a consultar o provedor; cidade inexistente não persiste;
+usuário anônimo é garantido antes do favorito; nome **canônico** do provedor é o que é salvo, não o
+digitado; remover favorito ausente/de outro usuário lança 404; remover o próprio favorito funciona;
+listagem retorna só os do usuário atual.
+
+**`AuthService`**: e-mail duplicado bloqueia o registro; **promoção de anônimo preserva o `Id`**
+(o cenário validado ao vivo com dado legado, [decisão 3](#3-jwt-mapinboundclaims-e-promoção-de-usuário-anônimo));
+registro sem anônimo prévio cria usuário novo; login com e-mail inexistente ou senha errada lança
+a mesma exceção (`CredenciaisInvalidasException`); login correto devolve token.
 
 ### Ferramentas e por quê
 
 - **xUnit v3 3.2.2** — o template in-box do SDK 10 ainda gera xUnit v2 (2.9.3); troquei para a
   linha atual. Exige `OutputType=Exe` no `.csproj`, porque a v3 roda os testes como executável.
+  O analisador `xUnit1051` pede `TestContext.Current.CancellationToken` explícito em chamadas
+  assíncronas — mais um sinal de que é uma linha ativamente mantida, não só "mais nova".
 - **Shouldly** — asserções legíveis. Ver [justificativa da troca](#3-shouldly-em-vez-de-fluentassertions).
-- **NSubstitute** — para os testes de serviço das próximas fases.
+- **NSubstitute** — `Arg.Is<T>` tipa o parâmetro do predicado como `T?` (reflete que um argumento
+  real pode chegar nulo em runtime mesmo com nullable reference types); com `Nullable=enable` isso
+  exige `!` explícito dentro do lambda quando se sabe que o valor não será nulo.
 
 ---
 
 ## Desvios deliberados do planejamento
 
-O planejamento original sugeria outras escolhas nestes cinco pontos. Registro o motivo de cada
-mudança:
+O planejamento original sugeria outras escolhas nestes pontos. Registro o motivo de cada mudança:
 
 ### 1. Scalar em vez de Swagger UI
 
 O .NET 10 **gera** o documento OpenAPI nativamente (`Microsoft.AspNetCore.OpenApi`) mas **não traz
 UI** — os templates deixaram de incluir Swashbuckle desde o .NET 9. `Scalar.AspNetCore` fornece a
-UI navegável em uma linha e consome direto o documento nativo.
+UI navegável em uma linha, consome direto o documento nativo e já mostra o botão "Authorize" para
+o Bearer token (via `BearerSecuritySchemeTransformer`, um `IOpenApiDocumentTransformer` de ~25
+linhas).
 
 Se a expectativa for literalmente "Swagger", `Swashbuckle.AspNetCore.SwaggerUI` (só o middleware de
 UI, sem o gerador) apontado para `/openapi/v1.json` entrega a interface familiar sem reintroduzir o
@@ -531,7 +694,7 @@ gerador antigo. É uma troca de duas linhas.
 ### 2. `IExceptionHandler` em vez de `ExceptionHandlingMiddleware`
 
 O planejamento citava as duas abordagens em seções diferentes. Ver
-[decisão 5](#5-iexceptionhandler-em-vez-de-middleware-escrito-à-mão).
+[decisão 7](#7-iexceptionhandler-em-vez-de-middleware-escrito-à-mão).
 
 ### 3. Shouldly em vez de FluentAssertions
 
@@ -553,6 +716,15 @@ máquina de outra pessoa, `.sln` é a escolha segura.
 Docker não estava disponível na máquina de desenvolvimento. Preferi **não** versionar um
 `docker-compose.yml` que nunca foi executado — um arquivo de infraestrutura não testado é pior que
 sua ausência, porque cria falsa confiança.
+
+### 6. `FavoritosController` protegido por `[Authorize]`, não por header opcional
+
+O planejamento descrevia o JWT como bônus explícito, mas não detalhava se favoritos ficariam
+acessíveis anonimamente **e** autenticados, ou só autenticados após a fase 3. Optei por proteger
+totalmente com `[Authorize]`: é a leitura mais direta de "JWT + restrição de endpoints
+autenticados" no enunciado. A consequência (documentada na [modelagem de dados](#a-entidade-usuario-tem-duas-variantes-na-mesma-tabela))
+é que a promoção de usuário anônimo passa a servir só para dado legado — um trade-off que preferi
+assumir e explicar a deixar implícito.
 
 ---
 
@@ -582,7 +754,7 @@ Nunca vão para o `appsettings.json`:
 dotnet user-secrets set "OpenWeatherMap:ApiKey" "SUA_CHAVE_AQUI" --project src/WeatherApp.API
 ```
 
-A chave de assinatura do JWT só será usada na fase 3, mas já pode ser gerada (mínimo de 32 bytes):
+Chave de assinatura do JWT (mínimo de 32 bytes; abaixo, 48):
 
 ```powershell
 # PowerShell — gera 48 bytes aleatórios em Base64
@@ -635,7 +807,7 @@ dotnet run --project src/WeatherApp.API
 dotnet test
 ```
 
-### Verificação rápida (PowerShell)
+### Verificação rápida ponta a ponta (PowerShell)
 
 ```powershell
 $b = "https://localhost:7061/api"
@@ -648,50 +820,37 @@ Invoke-RestMethod "$b/clima/São José do Rio Preto"
 
 # erro padronizado — 404 em application/problem+json, não 500
 curl.exe -sk "$b/clima/cidadeinexistente123"
+
+# fluxo de auth + favoritos
+$token = (Invoke-RestMethod "$b/auth/register" -Method Post -ContentType 'application/json; charset=utf-8' `
+    -Body '{"nome":"Teste","email":"teste@teste.com","senha":"SenhaForte123"}').token
+$h = @{ Authorization = "Bearer $token" }
+
+Invoke-RestMethod "$b/favoritos" -Headers $h -Method Post -ContentType 'application/json; charset=utf-8' `
+    -Body '{"nome":"Fortaleza","paisCodigo":"BR"}'
+Invoke-RestMethod "$b/favoritos" -Headers $h                      # deve listar Fortaleza
+curl.exe -sk -w "`nHTTP %{http_code}`n" "$b/favoritos"             # sem token -> 401
 ```
 
 > Em PowerShell 5.1, `curl` é **alias de `Invoke-WebRequest`** e não aceita flags do curl real —
 > use `curl.exe` explicitamente. `-SkipHttpErrorCheck` também não existe nessa versão; para
-> inspecionar 4xx, use `try/catch` ou `curl.exe -i`.
+> inspecionar 4xx/5xx, use `try/catch` ou `curl.exe -i`.
 
 ---
 
-## Próximos passos
+## Fora de escopo / evolução futura
 
-Em ordem de prioridade, seguindo o roadmap do planejamento:
+Avaliado e deliberadamente deixado de fora, por não fazer parte do enunciado:
 
-1. **CRUD de favoritos** (fase 2) — repositórios EF, `FavoritosService`, `FavoritosController`.
-   O usuário vem de uma abstração `IUsuarioAtualProvider`: antes do JWT, lê o GUID anônimo do
-   header `X-Usuario-Id`; depois, a claim `sub` do token. O `FavoritosService` não muda ao trocar
-   um pelo outro.
-   > **Nota de segurança a registrar desde já:** pré-JWT, `X-Usuario-Id` é um **identificador de
-   > partição de dados, não uma credencial** — vem do cliente e portanto é forjável. O objetivo
-   > dessa fase é estabilizar o modelo de dados, não autenticar.
-
-2. **Validação de entrada** (fase 2) — FluentValidation registrado por DI + um `IAsyncActionFilter`
-   próprio. Nota: `FluentValidation.AspNetCore` (auto-validation) está descontinuado, e o
-   `AddValidation()` nativo do .NET 10 **só se aplica a Minimal APIs** — com Controllers, o que se
-   tem "de graça" é o `ValidationProblemDetails` automático do `[ApiController]` a partir de
-   DataAnnotations.
-
-3. **JWT** (fase 3, bônus) — `JsonWebTokenHandler`, `PasswordHasher<Usuario>` (PBKDF2, sem
-   dependência de terceiros), `[Authorize]` nos favoritos, security scheme no OpenAPI.
-   > ⚠️ `JwtBearerOptions.MapInboundClaims` tem default **`true`** e remapeia `sub` para
-   > `ClaimTypes.NameIdentifier` — ler `User.FindFirst("sub")` retornaria `null`. Será preciso
-   > `MapInboundClaims = false`.
-   >
-   > Esta fase **não deve gerar migration nova**; se gerar, o modelo da fase 1 estava errado.
-
-4. **Cache + resiliência** (fase 4) — `CachedWeatherProvider` (Decorator, `IMemoryCache`, TTL
-   10–15 min, chave normalizada sem acento/caixa) e `AddStandardResilienceHandler`.
-   > ⚠️ Dois cuidados já mapeados: o circuit breaker padrão exige `MinimumThroughput = 100`
-   > requisições em 30 s, então **nunca abriria** numa demonstração — precisa de tuning explícito;
-   > e o validador de opções falha no startup se `SamplingDuration < 2 × AttemptTimeout`.
-
-5. **Testes de serviço** (fase 5) — `ClimaService` e `FavoritosService` com NSubstitute, incluindo
-   um teste anti-regressão de que máx/mín vêm da previsão e não de `main.temp_max`.
-
-**Fora de escopo, mencionado como evolução:** refresh token; `HybridCache` (.NET 9+) no lugar de
-`IMemoryCache`, que tem proteção nativa contra *cache stampede* — hoje N requisições concorrentes
-para a mesma cidade fria disparariam N chamadas ao provedor; e One Call API 3.0 da OpenWeatherMap,
-que entrega máx/mín diários nativos mas exige assinatura com cartão de crédito.
+- **Refresh token** — o JWT expira (`Jwt:MinutosExpiracao`, default 60 min) e exige novo login.
+  Razoável para o escopo do teste; um refresh token adicionaria um fluxo e uma tabela só para isso.
+- **`HybridCache`** (.NET 9+) no lugar de `IMemoryCache` — tem proteção nativa contra *cache
+  stampede*: hoje, N requisições concorrentes para a mesma cidade fria disparam N chamadas ao
+  provedor, porque `IMemoryCache.GetOrCreateAsync` não serializa esse caso. Não é um problema
+  visível no volume de um teste técnico, mas seria a primeira melhoria de cache num cenário real.
+- **One Call API 3.0** da OpenWeatherMap — entrega máx/mín diários nativos, eliminando a
+  necessidade de derivar da previsão. Exige assinatura com cartão de crédito mesmo no tier
+  gratuito de 1.000 chamadas/dia, inviável para este contexto.
+- **`/geo/1.0/direct`** para autocomplete/desambiguação de cidades homônimas na busca — não há
+  esse requisito hoje; a mitigação atual (`"Cidade,PaisCodigo"` + coordenadas persistidas nos
+  favoritos) cobre o caso necessário sem a chamada extra.
