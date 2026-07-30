@@ -12,39 +12,24 @@ namespace WeatherApp.API.ErrorHandling;
 /// <c>IProblemDetailsService</c>, é encadeável (vários handlers em ordem de registro) e dispensa
 /// <c>try/catch</c> repetido em cada controller.</para>
 /// </summary>
-public sealed class DomainExceptionHandler(
-    IProblemDetailsService problemDetails,
-    ILogger<DomainExceptionHandler> logger) : IExceptionHandler
+public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails, ILogger<DomainExceptionHandler> logger) : IExceptionHandler
 {
-    public async ValueTask<bool> TryHandleAsync(
-        HttpContext context,
-        Exception exception,
-        CancellationToken ct)
+    public async ValueTask<bool> TryHandleAsync(HttpContext context,Exception exception,CancellationToken ct)
     {
         if (exception is not DomainException dominio)
-        {
-            // Não é nossa: devolve false para o próximo handler (ou para o fallback 500).
             return false;
-        }
 
         var status = MapearStatus(dominio);
 
-        // 5xx é problema nosso e merece log de erro; 4xx é esperado no fluxo normal.
         if (status >= StatusCodes.Status500InternalServerError)
-        {
             logger.LogError(dominio, "Falha de integração tratada: {Titulo}", dominio.Titulo);
-        }
         else
-        {
             logger.LogDebug("Regra de negócio recusou a requisição: {Titulo}", dominio.Titulo);
-        }
 
         context.Response.StatusCode = status;
 
         if (status == StatusCodes.Status503ServiceUnavailable)
-        {
             context.Response.Headers.RetryAfter = "60";
-        }
 
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {

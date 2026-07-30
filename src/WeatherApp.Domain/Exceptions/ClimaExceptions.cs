@@ -1,8 +1,10 @@
 namespace WeatherApp.Domain.Exceptions;
 
-/// <summary>Provedor respondeu 404 para o nome pesquisado. Vira HTTP 404.</summary>
-public sealed class CidadeNaoEncontradaException(string cidade)
-    : DomainException($"Não foi encontrada nenhuma cidade com o nome '{cidade}'.")
+/// <summary>
+/// Provedor respondeu 404 para o nome pesquisado. 
+/// Vira HTTP 404.
+/// </summary>
+public sealed class CidadeNaoEncontradaException(string cidade) : DomainException($"Não foi encontrada nenhuma cidade com o nome '{cidade}'.")
 {
     public override string Titulo => "Cidade não encontrada";
     public string Cidade { get; } = cidade;
@@ -15,8 +17,7 @@ public sealed class CidadeNaoEncontradaException(string cidade)
 /// <para>A mensagem original do provedor <b>nunca</b> deve ser repassada ao cliente — a query
 /// string da OpenWeatherMap carrega <c>appid=&lt;chave&gt;</c>. Ela vai só para o log.</para>
 /// </summary>
-public sealed class ProvedorClimaIndisponivelException(string mensagem, Exception? inner = null)
-    : DomainException(mensagem)
+public sealed class ProvedorClimaIndisponivelException(string mensagem, Exception? inner = null) : DomainException(mensagem)
 {
     public override string Titulo => "Serviço de clima indisponível";
     public Exception? Causa { get; } = inner;
@@ -26,8 +27,7 @@ public sealed class ProvedorClimaIndisponivelException(string mensagem, Exceptio
 /// Falha de integração atribuível à nossa configuração — tipicamente 401/403 por chave
 /// inválida ou ainda não ativada. Vira HTTP 502, porque o problema não é do cliente.
 /// </summary>
-public sealed class FalhaIntegracaoProvedorException(string mensagem)
-    : DomainException(mensagem)
+public sealed class FalhaIntegracaoProvedorException(string mensagem) : DomainException(mensagem)
 {
     public override string Titulo => "Falha na integração com o provedor de clima";
 }

@@ -6,41 +6,59 @@ namespace WeatherApp.Application.Tests.Clima;
 /// <summary>
 /// Testes da agregação de previsão — a lógica mais delicada do projeto.
 ///
-/// <para>Os cenários reproduzem a distribuição <b>real</b> medida contra a API da
-/// OpenWeatherMap para Curitiba (offset -10800): 40 blocos de 3 h a partir de
-/// 2026-07-30T12:00Z, que caem em <b>6</b> datas locais (5/8/8/8/8/3) — não 5.</para>
+/// <para>A cidade de referência é <b>São José do Rio Preto (SP)</b>, offset <c>-10800</c>
+/// confirmado contra a API ao vivo. Duas observações reais do mesmo endpoint, em horários
+/// diferentes do mesmo dia, devolveram distribuições <b>diferentes</b> dos 40 blocos:</para>
+/// <code>
+/// consulta às 12:00Z -> 5 / 8 / 8 / 8 / 8 / 3
+/// consulta às 15:00Z -> 4 / 8 / 8 / 8 / 8 / 4
+/// </code>
+/// <para>Ou seja: o recorte de cabeça e cauda <b>varia conforme a hora da consulta</b>, e o que
+/// é invariante é sempre haver <b>6</b> datas locais, nunca 5. Por isso os dois formatos são
+/// testados: a agregação não pode depender de um split específico.</para>
 /// </summary>
 public class PrevisaoDiariaAggregatorTests
 {
-    /// <summary>Curitiba: UTC-3, em segundos. Offset negativo é o caso que expõe bug de fuso.</summary>
-    private const int OffsetCuritiba = -10800;
+    private const string CidadeTeste = "São José do Rio Preto";
 
-    /// <summary>Primeiro bloco da amostra real capturada da API.</summary>
-    private static readonly DateTimeOffset PrimeiroBlocoReal =
+    /// <summary>
+    /// São José do Rio Preto (SP): UTC-3 em segundos, verificado na resposta da API
+    /// (<c>timezone = -10800</c>). Offset negativo é justamente o caso que expõe bug de fuso.
+    /// </summary>
+    private const int OffsetSaoJoseDoRioPreto = -10800;
+
+    /// <summary>Âncora da observação real das 12:00Z (distribuição 5/8/8/8/8/3).</summary>
+    private static readonly DateTimeOffset PrimeiroBloco12h =
         new(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Âncora da observação real das 15:00Z (distribuição 4/8/8/8/8/4).</summary>
+    private static readonly DateTimeOffset PrimeiroBloco15h =
+        new(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+
     [Fact]
-    public void Amostra_real_de_40_blocos_cai_em_6_datas_locais()
+    public void Amostra_real_das_12h_cai_em_6_datas_locais()
     {
-        // Sanidade do próprio cenário: se esta premissa mudar, os testes abaixo perdem sentido.
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
-        var offset = TimeSpan.FromSeconds(OffsetCuritiba);
-
-        var contagemPorData = previsao.Blocos
-            .GroupBy(b => DateOnly.FromDateTime(b.InstanteUtc.ToOffset(offset).DateTime))
-            .OrderBy(g => g.Key)
-            .Select(g => g.Count())
-            .ToArray();
-
-        contagemPorData.ShouldBe([5, 8, 8, 8, 8, 3]);
+        // Sanidade do cenário: se esta premissa mudar, os testes abaixo perdem sentido.
+        ContarBlocosPorDataLocal(PrimeiroBloco12h).ShouldBe([5, 8, 8, 8, 8, 3]);
     }
 
     [Fact]
-    public void Agregar_devolve_exatamente_5_dias_apesar_dos_6_buckets()
+    public void Amostra_real_das_15h_tambem_cai_em_6_datas_locais_com_split_diferente()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        // Mesma cidade, mesmo dia, hora de consulta diferente: cabeça e cauda mudam,
+        // mas continuam sendo 6 buckets.
+        ContarBlocosPorDataLocal(PrimeiroBloco15h).ShouldBe([4, 8, 8, 8, 8, 4]);
+    }
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+    [Theory]
+    [InlineData(12)]
+    [InlineData(15)]
+    public void Agregar_devolve_exatamente_5_dias_nos_dois_formatos_reais(int horaUtcDoPrimeiroBloco)
+    {
+        var primeiro = new DateTimeOffset(2026, 7, 30, horaUtcDoPrimeiroBloco, 0, 0, TimeSpan.Zero);
+        var previsao = ConstruirPrevisao(primeiro, quantidade: 40);
+
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, primeiro);
 
         dias.Count.ShouldBe(5);
     }
@@ -48,9 +66,9 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void Agregar_devolve_datas_locais_consecutivas_comecando_hoje()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         dias.Select(d => d.Data).ShouldBe(
         [
@@ -65,9 +83,9 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void Agregar_descarta_a_cauda_parcial_do_sexto_dia()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         dias.ShouldNotContain(d => d.Data == new DateOnly(2026, 8, 4));
     }
@@ -75,11 +93,12 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void Agrupamento_usa_data_LOCAL_e_nao_UTC()
     {
-        // O bloco de 00:00Z de 31/07 é 21:00 do dia 30 em Curitiba. Se o agrupamento usasse a
-        // data UTC, ele cairia no dia 31 e deslocaria todos os cards em um dia.
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        // O bloco de 00:00Z de 31/07 é 21:00 do dia 30 em São José do Rio Preto (UTC-3).
+        // Se o agrupamento usasse a data UTC, ele cairia no dia 31 e deslocaria todos os
+        // cards em um dia inteiro.
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         // A mínima é o que discrimina os dois agrupamentos:
         //   - por data LOCAL, 30/07 tem 5 blocos (local 09,12,15,18,21) e o de 21:00 — que é
@@ -100,10 +119,10 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void Maxima_e_minima_do_dia_vem_dos_blocos_daquele_dia()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
-        var offset = TimeSpan.FromSeconds(OffsetCuritiba);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
+        var offset = TimeSpan.FromSeconds(OffsetSaoJoseDoRioPreto);
 
         foreach (var dia in dias)
         {
@@ -131,21 +150,24 @@ public class PrevisaoDiariaAggregatorTests
         dias.ShouldNotContain(d => d.Data == new DateOnly(2026, 7, 30));
     }
 
-    [Fact]
-    public void Dia_corrente_e_mantido_quando_tem_cobertura_suficiente()
+    [Theory]
+    [InlineData(12)] // 5 blocos hoje
+    [InlineData(15)] // 4 blocos hoje
+    public void Dia_corrente_e_mantido_quando_tem_cobertura_suficiente(int horaUtcDoPrimeiroBloco)
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var primeiro = new DateTimeOffset(2026, 7, 30, horaUtcDoPrimeiroBloco, 0, 0, TimeSpan.Zero);
+        var previsao = ConstruirPrevisao(primeiro, quantidade: 40);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, primeiro);
 
-        // 5 blocos hoje >= 3, então hoje entra.
+        // Nos dois formatos reais hoje tem >= 3 blocos, então hoje entra na lista.
         dias[0].Data.ShouldBe(new DateOnly(2026, 7, 30));
     }
 
     [Fact]
     public void Dias_anteriores_a_hoje_sao_ignorados()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
         // "Agora" três dias à frente: só devem sobrar os dias >= 02/08.
         var agora = new DateTimeOffset(2026, 8, 2, 15, 0, 0, TimeSpan.Zero);
@@ -157,9 +179,9 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void Icone_escolhido_e_o_do_bloco_mais_proximo_do_meio_dia_local()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         // ConstruirPrevisao marca o bloco de 12:00 local com o código "01d".
         dias[1].Icone.ShouldBe("01d");
@@ -170,13 +192,13 @@ public class PrevisaoDiariaAggregatorTests
     {
         // Um único bloco, às 23:00 local, com ícone noturno.
         var primeiro = new DateTimeOffset(2026, 7, 31, 2, 0, 0, TimeSpan.Zero); // 23:00 local dia 30
-        var previsao = new PrevisaoBruta("Curitiba", "BR", OffsetCuritiba,
+        var previsao = new PrevisaoBruta(CidadeTeste, "BR", OffsetSaoJoseDoRioPreto,
         [
             NovoBloco(primeiro, 15m, 14m, 16m, icone: "10n", ehDiurno: false)
         ]);
 
-        // agoraUtc no mesmo dia local, e o dia tem < 3 blocos... então usamos "ontem" como agora
-        // para que o único dia disponível não seja descartado por ser o dia corrente.
+        // "Agora" no dia anterior, para que o único dia disponível não seja descartado
+        // pela regra de cobertura mínima do dia corrente.
         var dias = PrevisaoDiariaAggregator.Agregar(
             previsao, agoraUtc: new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
@@ -188,9 +210,9 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void Lista_vazia_nao_estoura()
     {
-        var previsao = new PrevisaoBruta("Curitiba", "BR", OffsetCuritiba, []);
+        var previsao = new PrevisaoBruta(CidadeTeste, "BR", OffsetSaoJoseDoRioPreto, []);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         dias.ShouldBeEmpty();
     }
@@ -199,9 +221,9 @@ public class PrevisaoDiariaAggregatorTests
     public void Menos_de_5_dias_disponiveis_retorna_o_que_houver_sem_lancar()
     {
         // 8 blocos = 1 dia local cheio + resto.
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 8);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 8);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         dias.Count.ShouldBeLessThan(5);
         dias.ShouldNotBeEmpty();
@@ -211,10 +233,13 @@ public class PrevisaoDiariaAggregatorTests
     public void Fuso_fracionario_da_India_agrupa_corretamente()
     {
         // +05:30 faz as horas locais caírem em :30, exercitando o cálculo fracionário.
+        // Não é o caso de São José do Rio Preto, mas garante que a lógica não assume
+        // offsets múltiplos de uma hora.
         const int offsetIndia = 19800;
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40, offsetSegundos: offsetIndia);
+        var previsao = ConstruirPrevisao(
+            PrimeiroBloco12h, quantidade: 40, offsetSegundos: offsetIndia);
 
-        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBlocoReal);
+        var dias = PrevisaoDiariaAggregator.Agregar(previsao, PrimeiroBloco12h);
 
         dias.Count.ShouldBe(5);
         dias.Select(d => d.Data).ShouldBeInOrder();
@@ -225,7 +250,7 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void ObterMaximaMinimaDoDia_retorna_null_para_data_sem_blocos()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
         var resultado = PrevisaoDiariaAggregator
             .ObterMaximaMinimaDoDia(previsao, new DateOnly(2030, 1, 1));
@@ -236,20 +261,32 @@ public class PrevisaoDiariaAggregatorTests
     [Fact]
     public void ObterMaximaMinimaDoDia_usa_amplitude_dos_blocos_do_dia()
     {
-        var previsao = ConstruirPrevisao(PrimeiroBlocoReal, quantidade: 40);
+        var previsao = ConstruirPrevisao(PrimeiroBloco12h, quantidade: 40);
 
         var resultado = PrevisaoDiariaAggregator
             .ObterMaximaMinimaDoDia(previsao, new DateOnly(2026, 7, 30));
 
         resultado.ShouldNotBeNull();
-        // Amplitude real (planted) do dia 30 local, bem maior que a faixa de ~1,4 °C que o
-        // endpoint de clima atual reportaria em temp_min/temp_max.
+        // Amplitude real do dia, muito maior que a faixa instantânea que o endpoint de clima
+        // atual reportaria. Medido ao vivo para São José do Rio Preto, temp_min e temp_max de
+        // /data/2.5/weather vieram AMBOS iguais a 23,92 — faixa de exatamente 0 °C.
         (resultado!.Value.Maxima - resultado.Value.Minima).ShouldBeGreaterThan(5m);
     }
 
     // ---------------------------------------------------------------------------------
     // Construção do cenário
     // ---------------------------------------------------------------------------------
+
+    private static int[] ContarBlocosPorDataLocal(DateTimeOffset primeiroBlocoUtc)
+    {
+        var previsao = ConstruirPrevisao(primeiroBlocoUtc, quantidade: 40);
+        var offset = TimeSpan.FromSeconds(OffsetSaoJoseDoRioPreto);
+
+        return [.. previsao.Blocos
+            .GroupBy(b => DateOnly.FromDateTime(b.InstanteUtc.ToOffset(offset).DateTime))
+            .OrderBy(g => g.Key)
+            .Select(g => g.Count())];
+    }
 
     /// <summary>
     /// Gera blocos de 3 em 3 horas a partir de um instante UTC, com temperaturas determinísticas
@@ -259,7 +296,7 @@ public class PrevisaoDiariaAggregatorTests
     private static PrevisaoBruta ConstruirPrevisao(
         DateTimeOffset primeiroBlocoUtc,
         int quantidade,
-        int offsetSegundos = OffsetCuritiba)
+        int offsetSegundos = OffsetSaoJoseDoRioPreto)
     {
         var offset = TimeSpan.FromSeconds(offsetSegundos);
         var blocos = new List<BlocoPrevisao>(quantidade);
@@ -282,7 +319,7 @@ public class PrevisaoDiariaAggregatorTests
                 ehDiurno: horaLocal is >= 6 and < 18));
         }
 
-        return new PrevisaoBruta("Curitiba", "BR", offsetSegundos, blocos);
+        return new PrevisaoBruta(CidadeTeste, "BR", offsetSegundos, blocos);
     }
 
     private static BlocoPrevisao NovoBloco(
