@@ -9,7 +9,9 @@ public sealed record ClimaAtualDto
     public required string Cidade { get; init; }
     public string? PaisCodigo { get; init; }
 
-    /// <summary>Temperatura atual em °C.</summary>
+    /// <summary>
+    /// Temperatura atual em °C.
+    /// </summary>
     public required decimal Temperatura { get; init; }
 
     public required decimal SensacaoTermica { get; init; }
@@ -23,22 +25,32 @@ public sealed record ClimaAtualDto
 
     public required decimal TemperaturaMinima { get; init; }
 
-    /// <summary>Umidade relativa em %.</summary>
+    /// <summary>
+    /// Umidade relativa em %.
+    /// </summary>
     public required int Umidade { get; init; }
 
-    /// <summary>Descrição da condição, em pt-BR (ex.: "nuvens dispersas").</summary>
+    /// <summary>
+    /// Descrição da condição, em pt-BR (ex.: "nuvens dispersas").
+    /// </summary>
     public required string Condicao { get; init; }
 
-    /// <summary>Código do ícone do provedor (ex.: "03d").</summary>
+    /// <summary>
+    /// Código do ícone do provedor (ex.: "03d").
+    /// </summary>
     public required string Icone { get; init; }
 
-    /// <summary>URL pronta do ícone, para o frontend não ter de conhecer o provedor.</summary>
+    /// <summary>
+    /// URL pronta do ícone, para o frontend não ter de conhecer o provedor.
+    /// </summary>
     public required string IconeUrl { get; init; }
 
     public decimal? Latitude { get; init; }
     public decimal? Longitude { get; init; }
 
-    /// <summary>Data/hora local da medição na cidade consultada.</summary>
+    /// <summary>
+    /// Data/hora local da medição na cidade consultada.
+    /// </summary>
     public required DateTimeOffset DataHoraLocal { get; init; }
 
     /// <summary>

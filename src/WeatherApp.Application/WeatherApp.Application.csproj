@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <!-- PasswordHasher<T> standalone: sem dependência de ASP.NET Core, como o FluentValidation. -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.10" />
     <!-- Abstrações de DI/cache para os serviços da Application, sem arrastar o ASP.NET Core. -->
     <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.10" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />

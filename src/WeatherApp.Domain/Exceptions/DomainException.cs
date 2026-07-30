@@ -7,6 +7,8 @@ namespace WeatherApp.Domain.Exceptions;
 /// </summary>
 public abstract class DomainException(string mensagem) : Exception(mensagem)
 {
-    /// <summary>Título curto exposto ao cliente no campo <c>title</c> do ProblemDetails.</summary>
+    /// <summary>
+    /// Título curto exposto ao cliente no campo <c>title</c> do ProblemDetails.
+    /// </summary>
     public abstract string Titulo { get; }
 }

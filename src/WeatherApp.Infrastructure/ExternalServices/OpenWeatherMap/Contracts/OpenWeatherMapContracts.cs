@@ -5,7 +5,9 @@ namespace WeatherApp.Infrastructure.ExternalServices.OpenWeatherMap.Contracts;
 // Records de desserialização espelhando o JSON real da OpenWeatherMap (capturado da API ao
 // vivo). Ficam internos ao Adapter de propósito: nada disso atravessa para a Application.
 
-/// <summary>Resposta de <c>/data/2.5/weather</c>.</summary>
+/// <summary>
+/// Resposta de <c>/data/2.5/weather</c>.
+/// </summary>
 internal sealed record OwmClimaAtualResponse
 {
     [JsonPropertyName("name")] public string? Name { get; init; }
@@ -14,14 +16,20 @@ internal sealed record OwmClimaAtualResponse
     [JsonPropertyName("coord")] public OwmCoord? Coord { get; init; }
     [JsonPropertyName("sys")] public OwmSys? Sys { get; init; }
 
-    /// <summary>Deslocamento do fuso local em relação a UTC, em <b>segundos</b>.</summary>
+    /// <summary>
+    /// Deslocamento do fuso local em relação a UTC, em <b>segundos</b>.
+    /// </summary>
     [JsonPropertyName("timezone")] public int Timezone { get; init; }
 
-    /// <summary>Instante da medição, em segundos Unix (UTC).</summary>
+    /// <summary>
+    /// Instante da medição, em segundos Unix (UTC).
+    /// </summary>
     [JsonPropertyName("dt")] public long Dt { get; init; }
 }
 
-/// <summary>Resposta de <c>/data/2.5/forecast</c> — 40 blocos de 3 horas.</summary>
+/// <summary>
+/// Resposta de <c>/data/2.5/forecast</c> — 40 blocos de 3 horas.
+/// </summary>
 internal sealed record OwmPrevisaoResponse
 {
     [JsonPropertyName("cnt")] public int Cnt { get; init; }
@@ -35,7 +43,9 @@ internal sealed record OwmBloco
     [JsonPropertyName("main")] public OwmMain? Main { get; init; }
     [JsonPropertyName("weather")] public List<OwmWeather>? Weather { get; init; }
 
-    /// <summary>Probabilidade de precipitação, 0 a 1.</summary>
+    /// <summary>
+    /// Probabilidade de precipitação, 0 a 1.
+    /// </summary>
     [JsonPropertyName("pop")] public decimal Pop { get; init; }
 
     [JsonPropertyName("sys")] public OwmBlocoSys? Sys { get; init; }
@@ -47,7 +57,7 @@ internal sealed record OwmMain
     [JsonPropertyName("feels_like")] public decimal FeelsLike { get; init; }
 
     /// <summary>
-    /// ⚠️ Em <c>/weather</c> isto é a dispersão entre estações <b>no instante atual</b>, não a
+    /// Em <c>/weather</c> isto é a dispersão entre estações <b>no instante atual</b>, não a
     /// mínima do dia. Em <c>/forecast</c> é a mínima <b>daquele bloco de 3 h</b>. Só o segundo
     /// caso é agregável em "mínima do dia".
     /// </summary>
@@ -76,7 +86,9 @@ internal sealed record OwmSys
 
 internal sealed record OwmBlocoSys
 {
-    /// <summary>"d" (dia) ou "n" (noite).</summary>
+    /// <summary>
+    /// "d" (dia) ou "n" (noite).
+    /// </summary>
     [JsonPropertyName("pod")] public string? Pod { get; init; }
 }
 
@@ -85,6 +97,8 @@ internal sealed record OwmCity
     [JsonPropertyName("name")] public string? Name { get; init; }
     [JsonPropertyName("country")] public string? Country { get; init; }
 
-    /// <summary>Offset do fuso local em segundos — base para agrupar por data local.</summary>
+    /// <summary>
+    /// Offset do fuso local em segundos — base para agrupar por data local.
+    /// </summary>
     [JsonPropertyName("timezone")] public int Timezone { get; init; }
 }

@@ -20,7 +20,9 @@ namespace WeatherApp.Application.Clima;
 /// </summary>
 public static class PrevisaoDiariaAggregator
 {
-    /// <summary>Quantos dias o contrato exige.</summary>
+    /// <summary>
+    /// Quantos dias o contrato exige.
+    /// </summary>
     public const int DiasRetornados = 5;
 
     /// <summary>
@@ -91,7 +93,9 @@ public static class PrevisaoDiariaAggregator
                 blocosDoDia.Min(b => b.Bloco.TemperaturaMinima));
     }
 
-    /// <summary>Monta a URL do ícone a partir do código do provedor.</summary>
+    /// <summary>
+    /// Monta a URL do ícone a partir do código do provedor.
+    /// </summary>
     public static string MontarUrlIcone(string icone) => $"{BaseUrlIcone}{icone}@2x.png";
 
     /// <summary>
@@ -154,7 +158,9 @@ public static class PrevisaoDiariaAggregator
     private static string ForcarVarianteDiurna(string icone) =>
         icone.EndsWith('n') ? string.Concat(icone.AsSpan(0, icone.Length - 1), "d") : icone;
 
-    /// <summary>Bloco com o instante já convertido para o fuso da cidade.</summary>
+    /// <summary>
+    /// Bloco com o instante já convertido para o fuso da cidade.
+    /// </summary>
     private sealed record BlocoLocal(
         BlocoPrevisao Bloco,
         DateTimeOffset InstanteLocal,

@@ -13,7 +13,9 @@ public sealed class CidadeFavorita
     public Guid Id { get; private set; }
     public string Nome { get; private set; } = string.Empty;
 
-    /// <summary>Código ISO do país, ex.: "BR". Evita ambiguidade de cidades homônimas.</summary>
+    /// <summary>
+    /// Código ISO do país, ex.: "BR". Evita ambiguidade de cidades homônimas.
+    /// </summary>
     public string? PaisCodigo { get; private set; }
 
     public decimal? Latitude { get; private set; }

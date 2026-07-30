@@ -18,7 +18,6 @@ public sealed class WeatherAppDbContext(DbContextOptions<WeatherAppDbContext> op
     {
         base.OnModelCreating(modelBuilder);
 
-        // Aplica todas as IEntityTypeConfiguration deste assembly.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WeatherAppDbContext).Assembly);
     }
 }
