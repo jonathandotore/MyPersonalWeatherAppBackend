@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Camada mais interna. Propositalmente sem nenhuma ProjectReference e sem
+    dependência de infraestrutura (nem System.Net.Http): é essa ausência que
+    garante a inversão de dependência da Clean Architecture.
+    As propriedades comuns vêm do Directory.Build.props na raiz.
+  -->
+
+</Project>

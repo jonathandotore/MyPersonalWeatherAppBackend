@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\WeatherApp.Domain\WeatherApp.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <!-- Abstrações de DI/cache para os serviços da Application, sem arrastar o ASP.NET Core. -->
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+  </ItemGroup>
+
+</Project>
