@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WeatherApp.Domain.Interfaces;
 using WeatherApp.Infrastructure.ExternalServices.OpenWeatherMap;
 using WeatherApp.Infrastructure.Persistence;
+using WeatherApp.Infrastructure.Persistence.Repositories;
 
 namespace WeatherApp.Infrastructure;
 
@@ -22,6 +23,9 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("WeatherAppDb") ?? throw new InvalidOperationException("ConnectionStrings:WeatherAppDb não configurada em appsettings.json.");
 
         services.AddDbContext<WeatherAppDbContext>(o => o.UseSqlServer(connectionString));
+
+        services.AddScoped<ICidadeFavoritaRepository, CidadeFavoritaRepository>();
+        services.AddScoped<IUsuarioRepository, UsuarioRepository>();
 
         return services;
     }

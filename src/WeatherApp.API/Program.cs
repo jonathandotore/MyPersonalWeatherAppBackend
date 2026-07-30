@@ -1,13 +1,20 @@
 using Scalar.AspNetCore;
+using WeatherApp.API.Auth;
 using WeatherApp.API.ErrorHandling;
+using WeatherApp.API.Filters;
 using WeatherApp.Application;
+using WeatherApp.Application.Abstractions;
 using WeatherApp.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
 const string PoliticaCors = "Frontend";
 
-builder.Services.AddControllers();
+builder.Services.AddScoped<ValidacaoActionFilter>();
+builder.Services.AddControllers(o => o.Filters.AddService<ValidacaoActionFilter>());
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IUsuarioAtualProvider, HttpUsuarioAtualProvider>();
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);

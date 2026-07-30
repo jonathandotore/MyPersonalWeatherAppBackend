@@ -25,7 +25,7 @@ internal sealed class UsuarioConfiguration : IEntityTypeConfiguration<Usuario>
         builder.Property(u => u.DataCriacao)
             .HasColumnType("datetime2")
             .IsRequired();
-.
+
         builder.HasIndex(u => u.Email)
             .IsUnique()
             .HasFilter("[Email] IS NOT NULL")
