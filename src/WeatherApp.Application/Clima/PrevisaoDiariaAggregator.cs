@@ -123,14 +123,19 @@ public static class PrevisaoDiariaAggregator
         return new PrevisaoDiaDto
         {
             Data = grupo.Data,
-            TemperaturaMaxima = grupo.Blocos.Max(b => b.Bloco.TemperaturaMaxima),
-            TemperaturaMinima = grupo.Blocos.Min(b => b.Bloco.TemperaturaMinima),
+            TemperaturaMaxima = ArredondarTemperatura(grupo.Blocos.Max(b => b.Bloco.TemperaturaMaxima)),
+            TemperaturaMinima = ArredondarTemperatura(grupo.Blocos.Min(b => b.Bloco.TemperaturaMinima)),
             Condicao = representativo.Bloco.Condicao,
             Icone = icone,
             IconeUrl = MontarUrlIcone(icone),
             ProbabilidadeChuva = grupo.Blocos.Max(b => b.Bloco.ProbabilidadeChuva)
         };
     }
+
+    /// <summary>Arredondamento comercial (0,5 sempre para longe do zero) — o que se espera ao
+    /// ver "26°" numa tela de clima, diferente do arredondamento bancário do <c>Math.Round</c> padrão.</summary>
+    private static int ArredondarTemperatura(decimal valor) =>
+        (int)Math.Round(valor, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// Escolhe o bloco que melhor representa o dia: o mais próximo do meio-dia local,

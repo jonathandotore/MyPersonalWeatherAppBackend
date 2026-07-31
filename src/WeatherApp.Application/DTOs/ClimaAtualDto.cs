@@ -10,20 +10,21 @@ public sealed record ClimaAtualDto
     public string? PaisCodigo { get; init; }
 
     /// <summary>
-    /// Temperatura atual em °C.
+    /// Temperatura atual em °C, arredondada para o inteiro mais próximo — o frontend não precisa
+    /// formatar casas decimais.
     /// </summary>
-    public required decimal Temperatura { get; init; }
+    public required int Temperatura { get; init; }
 
-    public required decimal SensacaoTermica { get; init; }
+    public required int SensacaoTermica { get; init; }
 
     /// <summary>
     /// Máxima do dia em °C, derivada dos blocos da previsão — não do campo <c>temp_max</c> da
     /// leitura atual, que representa dispersão entre estações no instante e não a amplitude
     /// diária. Ver <see cref="FonteMaxMin"/>.
     /// </summary>
-    public required decimal TemperaturaMaxima { get; init; }
+    public required int TemperaturaMaxima { get; init; }
 
-    public required decimal TemperaturaMinima { get; init; }
+    public required int TemperaturaMinima { get; init; }
 
     /// <summary>
     /// Umidade relativa em %.

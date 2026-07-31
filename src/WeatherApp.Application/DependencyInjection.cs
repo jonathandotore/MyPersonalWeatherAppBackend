@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddScoped<FavoritosService>();
         services.AddScoped<AuthService>();
         services.AddScoped<IValidator<CriarFavoritoRequest>, CriarFavoritoRequestValidator>();
+        services.AddScoped<IValidator<ClimaPorCoordenadasRequest>, ClimaPorCoordenadasRequestValidator>();
         services.AddScoped<IValidator<RegistrarRequest>, RegistrarRequestValidator>();
         services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
         services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();

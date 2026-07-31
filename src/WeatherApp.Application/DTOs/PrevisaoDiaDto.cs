@@ -10,8 +10,10 @@ public sealed record PrevisaoDiaDto
     /// </summary>
     public required DateOnly Data { get; init; }
 
-    public required decimal TemperaturaMaxima { get; init; }
-    public required decimal TemperaturaMinima { get; init; }
+    /// <summary>Em °C, arredondada para o inteiro mais próximo.</summary>
+    public required int TemperaturaMaxima { get; init; }
+
+    public required int TemperaturaMinima { get; init; }
 
     public required string Condicao { get; init; }
     public required string Icone { get; init; }

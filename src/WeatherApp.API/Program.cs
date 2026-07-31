@@ -72,6 +72,10 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
+
+    // Sem isso, abrir a URL base cai no 404 padrão (virou ProblemDetails JSON por causa do
+    // UseStatusCodePages), que é fácil de confundir com "o Scalar não está funcionando".
+    app.MapGet("/", () => Results.Redirect("/scalar/v1"));
 }
 
 app.UseHttpsRedirection();
