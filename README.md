@@ -43,7 +43,7 @@ documenta o que foi **efetivamente implementado** e, principalmente, **o porquê
 favoritos persistido em SQL Server, tratamento de erros e validação de entrada, JWT protegendo
 favoritos (bônus), Swagger/OpenAPI documentado, README com decisões de arquitetura.
 
-**38 testes unitários passando**, banco criado por migration, cache e resiliência confirmados ao
+**43 testes unitários passando**, banco criado por migration, cache e resiliência confirmados ao
 vivo (não só configurados) — ver [Decisões técnicas relevantes](#decisões-técnicas-relevantes) e
 [Estratégia de testes](#estratégia-de-testes).
 
@@ -233,9 +233,10 @@ corretamente rejeitado.
 ### Por que `Latitude`/`Longitude` são persistidas
 
 São opcionais, mas resolvem dois problemas: desambiguam cidades homônimas e permitem consultar o
-provedor por coordenada. Isso importa porque a OpenWeatherMap marca a **busca por nome como
-*deprecated*** (funcional, mas sem correções futuras) — guardar as coordenadas é a mitigação que
-permite migrar sem tocar em regra de negócio.
+provedor por coordenada via `GET /api/clima/coordenadas` (ver [Contrato da API](#contrato-da-api)).
+Isso importa porque a OpenWeatherMap marca a **busca por nome como *deprecated*** (funcional, mas
+sem correções futuras) — guardar as coordenadas de um favorito é o que permite ao frontend
+consultá-lo de volta sem depender do nome digitado pelo usuário.
 
 ---
 
@@ -250,6 +251,8 @@ Documentação navegável: **`/scalar/v1`** · documento OpenAPI: **`/openapi/v1
 |---|---|---|---|
 | `GET` | `/api/clima/{cidade}` | pública | Temperatura atual, condição + ícone, **máx/mín do dia**, umidade |
 | `GET` | `/api/clima/{cidade}/previsao` | pública | Exatamente 5 dias: data, máx/mín, condição + ícone |
+| `GET` | `/api/clima/coordenadas?latitude=&longitude=` | pública | Mesmo retorno de `/api/clima/{cidade}`, localizando por coordenada |
+| `GET` | `/api/clima/coordenadas/previsao?latitude=&longitude=` | pública | Mesmo retorno da previsão, por coordenada |
 | `GET` | `/api/favoritos` | **JWT** | Favoritos do usuário autenticado |
 | `POST` | `/api/favoritos` | **JWT** | Cria um favorito; valida a cidade no provedor antes de persistir |
 | `DELETE` | `/api/favoritos/{id}` | **JWT** | Remove um favorito; `204` |
@@ -311,6 +314,18 @@ O campo **`fonteMaxMin`** existe para tornar uma limitação explícita em vez d
 
 `data` é a data **local** da cidade consultada, não UTC. `dias` tem sempre 5 itens em ordem
 cronológica (ver [agregação](#2-cinco-dias-a-partir-de-seis-buckets)).
+
+### `GET /api/clima/coordenadas?latitude=-25.4284&longitude=-49.2733` → `200`
+
+Mesmo contrato de `GET /api/clima/{cidade}` — só muda como a localização é resolvida. Útil para
+"clima da minha localização atual" no frontend (geolocalização do navegador) e para consultar um
+favorito já persistido sem depender do nome digitado pelo usuário, já que `POST /api/favoritos`
+guarda `latitude`/`longitude`. `GET /api/clima/coordenadas/previsao` segue o mesmo formato de
+`GET /api/clima/{cidade}/previsao`.
+
+`latitude`/`longitude` são obrigatórios e validados (`-90..90` / `-180..180`); ausência ou valor
+fora da faixa devolve `400` com `ValidationProblemDetails`. Coordenada sem estação de clima
+próxima devolve `404`, igual à busca por nome.
 
 ### `POST /api/auth/register` → `200`
 
@@ -649,17 +664,39 @@ exceções. São conflitos ou falhas reais de configuração/integração — di
 que é uma saída de negócio comum. Convertê-las também seria replicar a mudança sem necessidade
 relatada.
 
+### 17. Busca por coordenada como rota literal irmã de `{cidade}`
+
+`GET /api/clima/coordenadas` e `GET /api/clima/coordenadas/previsao`, em vez de sobrecarregar
+`{cidade}` com um formato tipo `"lat,lon"`. Duas rotas com contratos de entrada diferentes (string
+vs. par de números validados) ficam mais claras como endpoints distintos, e o roteamento do
+ASP.NET Core já resolve a ambiguidade: um segmento literal (`coordenadas`) tem precedência sobre um
+parâmetro (`{cidade}`) na mesma posição, então `GET /api/clima/coordenadas` nunca cai na rota de
+nome (verificado ao vivo — `/api/clima/Curitiba` e `/api/clima/coordenadas?...` coexistem sem
+conflito).
+
+Reaproveita toda a pilha existente: mesmo `IWeatherProvider` (dois métodos novos,
+`ObterClimaAtualPorCoordenadasAsync`/`ObterPrevisaoPorCoordenadasAsync`), mesmo
+`CachedWeatherProvider` (chave de cache própria, coordenada arredondada a 4 casas decimais — 
+~11 m de precisão, o bastante para duas leituras de GPS da mesma cidade caírem na mesma entrada),
+mesma resiliência HTTP, e o mesmo `ClimaService` — a lógica de derivar máxima/mínima do dia e de
+degradar quando a previsão falha foi extraída para um método que recebe a chamada ao provedor como
+`Func`, em vez de duplicá-la para o caminho por coordenada.
+
+Validação de `latitude`/`longitude` (obrigatórios, faixas `-90..90`/`-180..180`) segue o mesmo
+padrão de `CriarFavoritoRequestValidator`: um `IValidator<T>` do FluentValidation rodado pelo
+`ValidacaoActionFilter` já registrado globalmente — nenhuma peça nova de infraestrutura.
+
 ---
 
 ## Estratégia de testes
 
-**39 testes, todos passando.** `dotnet test`
+**43 testes, todos passando.** `dotnet test`
 
 ```
 tests/WeatherApp.Application.Tests/
 ├── Clima/PrevisaoDiariaAggregatorTests.cs   (17 testes)
 └── Services/
-    ├── ClimaServiceTests.cs                  (6 testes)
+    ├── ClimaServiceTests.cs                  (10 testes)
     ├── FavoritosServiceTests.cs               (7 testes)
     └── AuthServiceTests.cs                    (6 testes)
 ```

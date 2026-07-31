@@ -36,16 +36,42 @@ public sealed class OpenWeatherMapProvider(
 
     public async Task<ClimaAtualBruto?> ObterClimaAtualAsync(string cidade, CancellationToken ct = default)
     {
-        var payload = await ObterAsync<OwmClimaAtualResponse>("data/2.5/weather", cidade, ct);
-        if (payload is null)
-        {
-            return null;
-        }
+        var payload = await ObterAsync<OwmClimaAtualResponse>(
+            "data/2.5/weather", QueryPorNome(cidade), cidade, ct);
+        return payload is null ? null : MapearClimaAtual(payload, cidade);
+    }
 
+    public async Task<PrevisaoBruta?> ObterPrevisaoAsync(string cidade, CancellationToken ct = default)
+    {
+        var payload = await ObterAsync<OwmPrevisaoResponse>(
+            "data/2.5/forecast", QueryPorNome(cidade), cidade, ct);
+        return payload is null ? null : MapearPrevisao(payload, cidade);
+    }
+
+    public async Task<ClimaAtualBruto?> ObterClimaAtualPorCoordenadasAsync(
+        decimal latitude, decimal longitude, CancellationToken ct = default)
+    {
+        var rotulo = FormatarCoordenadas(latitude, longitude);
+        var payload = await ObterAsync<OwmClimaAtualResponse>(
+            "data/2.5/weather", QueryPorCoordenadas(latitude, longitude), rotulo, ct);
+        return payload is null ? null : MapearClimaAtual(payload, rotulo);
+    }
+
+    public async Task<PrevisaoBruta?> ObterPrevisaoPorCoordenadasAsync(
+        decimal latitude, decimal longitude, CancellationToken ct = default)
+    {
+        var rotulo = FormatarCoordenadas(latitude, longitude);
+        var payload = await ObterAsync<OwmPrevisaoResponse>(
+            "data/2.5/forecast", QueryPorCoordenadas(latitude, longitude), rotulo, ct);
+        return payload is null ? null : MapearPrevisao(payload, rotulo);
+    }
+
+    private static ClimaAtualBruto MapearClimaAtual(OwmClimaAtualResponse payload, string rotuloFallback)
+    {
         var condicao = payload.Weather?.FirstOrDefault();
 
         return new ClimaAtualBruto(
-            Cidade: payload.Name ?? cidade,
+            Cidade: payload.Name ?? rotuloFallback,
             PaisCodigo: payload.Sys?.Country,
             Temperatura: payload.Main?.Temp ?? 0m,
             SensacaoTermica: payload.Main?.FeelsLike ?? 0m,
@@ -60,14 +86,8 @@ public sealed class OpenWeatherMapProvider(
             InstanteUtc: DateTimeOffset.FromUnixTimeSeconds(payload.Dt));
     }
 
-    public async Task<PrevisaoBruta?> ObterPrevisaoAsync(string cidade, CancellationToken ct = default)
+    private static PrevisaoBruta MapearPrevisao(OwmPrevisaoResponse payload, string rotuloFallback)
     {
-        var payload = await ObterAsync<OwmPrevisaoResponse>("data/2.5/forecast", cidade, ct);
-        if (payload is null)
-        {
-            return null;
-        }
-
         var blocos = (payload.List ?? [])
             .Select(b =>
             {
@@ -86,15 +106,16 @@ public sealed class OpenWeatherMapProvider(
             .ToList();
 
         return new PrevisaoBruta(
-            Cidade: payload.City?.Name ?? cidade,
+            Cidade: payload.City?.Name ?? rotuloFallback,
             PaisCodigo: payload.City?.Country,
             OffsetSegundos: payload.City?.Timezone ?? 0,
             Blocos: blocos);
     }
 
-    private async Task<T?> ObterAsync<T>(string rota, string cidade, CancellationToken ct) where T : class
+    private async Task<T?> ObterAsync<T>(string rota, string queryLocalizacao, string rotulo, CancellationToken ct)
+        where T : class
     {
-        var url = MontarUrl(rota, cidade);
+        var url = MontarUrl(rota, queryLocalizacao);
 
         HttpResponseMessage resposta;
         try
@@ -121,7 +142,7 @@ public sealed class OpenWeatherMapProvider(
             // que o provedor não reconhece), não uma falha do sistema — retorna null em vez de
             // lançar, para que o 404 flua como um caminho normal do código até o controller,
             // em vez de por cima de uma exceção.
-            logger.LogDebug("OpenWeatherMap não encontrou '{Cidade}' em {Rota}.", cidade, rota);
+            logger.LogDebug("OpenWeatherMap não encontrou '{Rotulo}' em {Rota}.", rotulo, rota);
             return null;
         }
 
@@ -151,13 +172,17 @@ public sealed class OpenWeatherMapProvider(
             "O serviço de clima devolveu uma resposta vazia.");
     }
 
-    private string MontarUrl(string rota, string cidade)
-    {
-        var q = Uri.EscapeDataString(cidade.Trim());
+    private string MontarUrl(string rota, string queryLocalizacao) => string.Create(CultureInfo.InvariantCulture,
+        $"{rota}?{queryLocalizacao}&units={_cfg.Unidades}&lang={_cfg.Idioma}&appid={_cfg.ApiKey}");
 
-        return string.Create(CultureInfo.InvariantCulture,
-            $"{rota}?q={q}&units={_cfg.Unidades}&lang={_cfg.Idioma}&appid={_cfg.ApiKey}");
-    }
+    private static string QueryPorNome(string cidade) => $"q={Uri.EscapeDataString(cidade.Trim())}";
+
+    private static string QueryPorCoordenadas(decimal latitude, decimal longitude) =>
+        string.Create(CultureInfo.InvariantCulture, $"lat={latitude}&lon={longitude}");
+
+    // Coordenadas cruas na mensagem de log/fallback — nunca a URL completa, que carrega o appid.
+    private static string FormatarCoordenadas(decimal latitude, decimal longitude) =>
+        string.Create(CultureInfo.InvariantCulture, $"{latitude},{longitude}");
 }
 
 internal static class HttpContentJsonExtensions

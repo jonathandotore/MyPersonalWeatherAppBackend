@@ -140,6 +140,76 @@ public class ClimaServiceTests
         resultado.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task ObterClimaAtualPorCoordenadas_deriva_maxima_minima_do_forecast_por_coordenada()
+    {
+        const decimal lat = -20.8197m;
+        const decimal lon = -49.3794m;
+        var agora = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+        _provider.ObterClimaAtualPorCoordenadasAsync(lat, lon, Arg.Any<CancellationToken>())
+            .Returns(NovoClimaAtual(temp: 23.92m, minInstantanea: 23.92m, maxInstantanea: 23.92m, agora));
+        _provider.ObterPrevisaoPorCoordenadasAsync(lat, lon, Arg.Any<CancellationToken>())
+            .Returns(NovaPrevisaoComBlocoHoje(agora, minima: 18m, maxima: 31.6m));
+
+        var resultado = await _sut.ObterClimaAtualPorCoordenadasAsync(lat, lon, _ct);
+
+        resultado.ShouldNotBeNull();
+        resultado.TemperaturaMinima.ShouldBe(18);
+        resultado.TemperaturaMaxima.ShouldBe(32); // 31,6 arredondado
+        resultado.FonteMaxMin.ShouldBe("previsao");
+        await _provider.DidNotReceive().ObterClimaAtualAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ObterClimaAtualPorCoordenadas_devolve_null_para_coordenada_nao_encontrada_sem_chamar_a_previsao()
+    {
+        const decimal lat = 0m;
+        const decimal lon = 0m; // "null island" — sem cidade nenhuma
+        _provider.ObterClimaAtualPorCoordenadasAsync(lat, lon, Arg.Any<CancellationToken>())
+            .Returns((ClimaAtualBruto?)null);
+
+        var resultado = await _sut.ObterClimaAtualPorCoordenadasAsync(lat, lon, _ct);
+
+        resultado.ShouldBeNull();
+        await _provider.DidNotReceive().ObterPrevisaoPorCoordenadasAsync(
+            Arg.Any<decimal>(), Arg.Any<decimal>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ObterPrevisao5DiasPorCoordenadas_devolve_5_dias()
+    {
+        const decimal lat = -20.8197m;
+        const decimal lon = -49.3794m;
+        var primeiro = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+        var blocos = Enumerable.Range(0, 40)
+            .Select(i => NovoBloco(primeiro.AddHours(3 * i), 20m, 19m, 21m))
+            .ToList();
+        _provider.ObterPrevisaoPorCoordenadasAsync(lat, lon, Arg.Any<CancellationToken>())
+            .Returns(new PrevisaoBruta(Cidade, "BR", Offset, blocos));
+
+        var relogio = Substitute.For<TimeProvider>();
+        relogio.GetUtcNow().Returns(primeiro);
+        var sut = new ClimaService(_provider, relogio, NullLogger<ClimaService>.Instance);
+
+        var resultado = await sut.ObterPrevisao5DiasPorCoordenadasAsync(lat, lon, _ct);
+
+        resultado.ShouldNotBeNull();
+        resultado.Dias.Count.ShouldBe(5);
+    }
+
+    [Fact]
+    public async Task ObterPrevisao5DiasPorCoordenadas_devolve_null_para_coordenada_nao_encontrada()
+    {
+        const decimal lat = 0m;
+        const decimal lon = 0m;
+        _provider.ObterPrevisaoPorCoordenadasAsync(lat, lon, Arg.Any<CancellationToken>())
+            .Returns((PrevisaoBruta?)null);
+
+        var resultado = await _sut.ObterPrevisao5DiasPorCoordenadasAsync(lat, lon, _ct);
+
+        resultado.ShouldBeNull();
+    }
+
     private static ClimaAtualBruto NovoClimaAtual(
         decimal temp, decimal minInstantanea, decimal maxInstantanea, DateTimeOffset instante) => new(
         Cidade: Cidade,

@@ -39,8 +39,57 @@ public sealed class ClimaService(
             return null;
         }
 
-        var (maxima, minima, fonte) = await ResolverMaximaMinimaDoDiaAsync(cidade, atual, ct);
+        var (maxima, minima, fonte) = await ResolverMaximaMinimaDoDiaAsync(
+            () => provider.ObterPrevisaoAsync(cidade, ct), cidade, atual);
 
+        return MontarClimaAtualDto(atual, maxima, minima, fonte);
+    }
+
+    /// <summary>Igual a <see cref="ObterClimaAtualAsync"/>, mas localizando por coordenada — o
+    /// caminho recomendado pela OpenWeatherMap, que marca a busca por nome como deprecated, e a
+    /// forma natural de consultar um favorito (que já persiste lat/long).</summary>
+    public async Task<ClimaAtualDto?> ObterClimaAtualPorCoordenadasAsync(
+        decimal latitude, decimal longitude, CancellationToken ct = default)
+    {
+        var atual = await provider.ObterClimaAtualPorCoordenadasAsync(latitude, longitude, ct);
+        if (atual is null)
+        {
+            return null;
+        }
+
+        var rotulo = $"{latitude},{longitude}";
+        var (maxima, minima, fonte) = await ResolverMaximaMinimaDoDiaAsync(
+            () => provider.ObterPrevisaoPorCoordenadasAsync(latitude, longitude, ct), rotulo, atual);
+
+        return MontarClimaAtualDto(atual, maxima, minima, fonte);
+    }
+
+    /// <summary>Previsão agregada em 5 dias. Devolve <c>null</c> quando a cidade não é reconhecida
+    /// pelo provedor.</summary>
+    public async Task<PrevisaoDto?> ObterPrevisao5DiasAsync(string cidade, CancellationToken ct = default)
+    {
+        var previsao = await provider.ObterPrevisaoAsync(cidade, ct);
+        return previsao is null ? null : MontarPrevisaoDto(previsao);
+    }
+
+    /// <summary>Igual a <see cref="ObterPrevisao5DiasAsync"/>, mas por coordenada.</summary>
+    public async Task<PrevisaoDto?> ObterPrevisao5DiasPorCoordenadasAsync(
+        decimal latitude, decimal longitude, CancellationToken ct = default)
+    {
+        var previsao = await provider.ObterPrevisaoPorCoordenadasAsync(latitude, longitude, ct);
+        return previsao is null ? null : MontarPrevisaoDto(previsao);
+    }
+
+    private PrevisaoDto MontarPrevisaoDto(PrevisaoBruta previsao) => new()
+    {
+        Cidade = previsao.Cidade,
+        PaisCodigo = previsao.PaisCodigo,
+        Dias = PrevisaoDiariaAggregator.Agregar(previsao, relogio.GetUtcNow())
+    };
+
+    private static ClimaAtualDto MontarClimaAtualDto(
+        ClimaAtualBruto atual, decimal maxima, decimal minima, string fonte)
+    {
         var offset = TimeSpan.FromSeconds(atual.OffsetSegundos);
 
         return new ClimaAtualDto
@@ -62,47 +111,29 @@ public sealed class ClimaService(
         };
     }
 
-    /// <summary>Previsão agregada em 5 dias. Devolve <c>null</c> quando a cidade não é reconhecida
-    /// pelo provedor.</summary>
-    public async Task<PrevisaoDto?> ObterPrevisao5DiasAsync(string cidade, CancellationToken ct = default)
-    {
-        var previsao = await provider.ObterPrevisaoAsync(cidade, ct);
-        if (previsao is null)
-        {
-            return null;
-        }
-
-        return new PrevisaoDto
-        {
-            Cidade = previsao.Cidade,
-            PaisCodigo = previsao.PaisCodigo,
-            Dias = PrevisaoDiariaAggregator.Agregar(previsao, relogio.GetUtcNow())
-        };
-    }
-
     /// <summary>
     /// Deriva máxima/mínima do dia a partir da previsão, degradando para os campos da leitura
     /// instantânea sempre que a previsão não ajudar — indisponível, sem bloco para hoje, ou (caso
-    /// raro) sem encontrar a mesma cidade que o clima atual acabou de resolver. A tela continua
-    /// funcionando, e o campo <c>fonteMaxMin</c> do DTO deixa a degradação explícita em vez de
-    /// silenciosa.
+    /// raro) sem encontrar a mesma localização que o clima atual acabou de resolver. A tela
+    /// continua funcionando, e o campo <c>fonteMaxMin</c> do DTO deixa a degradação explícita em
+    /// vez de silenciosa.
     /// </summary>
     private async Task<(decimal Maxima, decimal Minima, string Fonte)> ResolverMaximaMinimaDoDiaAsync(
-        string cidade,
-        ClimaAtualBruto atual,
-        CancellationToken ct)
+        Func<Task<PrevisaoBruta?>> obterPrevisao,
+        string rotuloLocalizacao,
+        ClimaAtualBruto atual)
     {
         (decimal Maxima, decimal Minima, string Fonte) DegradarParaLeituraAtual() =>
             (atual.TemperaturaMaximaInstantanea, atual.TemperaturaMinimaInstantanea, "leitura-atual");
 
         try
         {
-            var previsao = await provider.ObterPrevisaoAsync(cidade, ct);
+            var previsao = await obterPrevisao();
             if (previsao is null)
             {
                 logger.LogDebug(
-                    "Previsão não encontrou {Cidade} logo após o clima atual resolvê-la; usando a leitura instantânea.",
-                    cidade);
+                    "Previsão não encontrou {Localizacao} logo após o clima atual resolvê-la; usando a leitura instantânea.",
+                    rotuloLocalizacao);
                 return DegradarParaLeituraAtual();
             }
 
@@ -115,8 +146,8 @@ public sealed class ClimaService(
             {
                 // Consulta no fim do dia local: já não há bloco de previsão para hoje.
                 logger.LogDebug(
-                    "Sem blocos de previsão para hoje em {Cidade}; usando a leitura instantânea.",
-                    cidade);
+                    "Sem blocos de previsão para hoje em {Localizacao}; usando a leitura instantânea.",
+                    rotuloLocalizacao);
                 return DegradarParaLeituraAtual();
             }
 
@@ -133,8 +164,8 @@ public sealed class ClimaService(
             // A previsão é complementar aqui: se ela falhar, ainda entregamos o clima atual.
             // Diferente de "não encontrada", isto é uma falha real do provedor — continua exceção.
             logger.LogWarning(ex,
-                "Previsão indisponível para {Cidade}; máxima/mínima cairão para a leitura instantânea.",
-                cidade);
+                "Previsão indisponível para {Localizacao}; máxima/mínima cairão para a leitura instantânea.",
+                rotuloLocalizacao);
 
             return DegradarParaLeituraAtual();
         }

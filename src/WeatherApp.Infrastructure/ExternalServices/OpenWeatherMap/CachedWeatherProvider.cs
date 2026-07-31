@@ -34,6 +34,20 @@ public sealed class CachedWeatherProvider(
             TimeSpan.FromMinutes(_cfg.TtlPrevisaoMinutos),
             () => inner.ObterPrevisaoAsync(cidade, ct));
 
+    public Task<ClimaAtualBruto?> ObterClimaAtualPorCoordenadasAsync(
+        decimal latitude, decimal longitude, CancellationToken ct = default) =>
+        ObterOuCriarAsync(
+            ChaveCache.DeClimaAtualPorCoordenadas(latitude, longitude),
+            TimeSpan.FromMinutes(_cfg.TtlClimaAtualMinutos),
+            () => inner.ObterClimaAtualPorCoordenadasAsync(latitude, longitude, ct));
+
+    public Task<PrevisaoBruta?> ObterPrevisaoPorCoordenadasAsync(
+        decimal latitude, decimal longitude, CancellationToken ct = default) =>
+        ObterOuCriarAsync(
+            ChaveCache.DePrevisaoPorCoordenadas(latitude, longitude),
+            TimeSpan.FromMinutes(_cfg.TtlPrevisaoMinutos),
+            () => inner.ObterPrevisaoPorCoordenadasAsync(latitude, longitude, ct));
+
     private async Task<T?> ObterOuCriarAsync<T>(string chave, TimeSpan ttl, Func<Task<T?>> buscar) where T : class
     {
         if (cache.TryGetValue(chave, out T? valor) && valor is not null)

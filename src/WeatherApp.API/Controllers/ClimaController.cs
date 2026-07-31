@@ -38,10 +38,48 @@ public sealed class ClimaController(ClimaService clima) : ControllerBase
         return resultado is not null ? Ok(resultado) : CidadeNaoEncontrada(cidade);
     }
 
+    /// <summary>Clima atual por coordenada, em vez de nome — o caminho recomendado pela
+    /// OpenWeatherMap (busca por nome é deprecated) e a forma natural de consultar um favorito,
+    /// que já persiste lat/long.</summary>
+    /// <param name="request">Latitude/longitude, na faixa válida (-90..90 / -180..180).</param>
+    [HttpGet("coordenadas")]
+    [ProducesResponseType<ClimaAtualDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<ClimaAtualDto>> ObterClimaAtualPorCoordenadas([FromQuery] ClimaPorCoordenadasRequest request, CancellationToken ct)
+    {
+        var resultado = await clima.ObterClimaAtualPorCoordenadasAsync(
+            request.Latitude!.Value, request.Longitude!.Value, ct);
+        return resultado is not null ? Ok(resultado) : CoordenadasNaoEncontradas(request);
+    }
+
+    /// <summary>
+    /// Previsão de 5 dias por coordenada — ver <see cref="ObterClimaAtualPorCoordenadas"/>.
+    /// </summary>
+    [HttpGet("coordenadas/previsao")]
+    [ProducesResponseType<PrevisaoDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<PrevisaoDto>> ObterPrevisaoPorCoordenadas([FromQuery] ClimaPorCoordenadasRequest request, CancellationToken ct)
+    {
+        var resultado = await clima.ObterPrevisao5DiasPorCoordenadasAsync(
+            request.Latitude!.Value, request.Longitude!.Value, ct);
+        return resultado is not null ? Ok(resultado) : CoordenadasNaoEncontradas(request);
+    }
+
     /// <summary>Mesmo título/mensagem que a antiga <c>CidadeNaoEncontradaException</c> produzia —
     /// o contrato de erro na rede não muda, só deixou de ser sinalizado por exceção.</summary>
     private ObjectResult CidadeNaoEncontrada(string cidade) => Problem(
         title: "Cidade não encontrada",
         detail: $"Não foi encontrada nenhuma cidade com o nome '{cidade}'.",
+        statusCode: StatusCodes.Status404NotFound);
+
+    private ObjectResult CoordenadasNaoEncontradas(ClimaPorCoordenadasRequest request) => Problem(
+        title: "Cidade não encontrada",
+        detail: $"Não foi encontrada nenhuma cidade nas coordenadas ({request.Latitude}, {request.Longitude}).",
         statusCode: StatusCodes.Status404NotFound);
 }
