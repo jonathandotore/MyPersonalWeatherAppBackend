@@ -41,10 +41,10 @@ public sealed class ClimaService(
         {
             Cidade = atual.Cidade,
             PaisCodigo = atual.PaisCodigo,
-            Temperatura = atual.Temperatura,
-            SensacaoTermica = atual.SensacaoTermica,
-            TemperaturaMaxima = maxima,
-            TemperaturaMinima = minima,
+            Temperatura = ArredondarTemperatura(atual.Temperatura),
+            SensacaoTermica = ArredondarTemperatura(atual.SensacaoTermica),
+            TemperaturaMaxima = ArredondarTemperatura(maxima),
+            TemperaturaMinima = ArredondarTemperatura(minima),
             Umidade = atual.Umidade,
             Condicao = atual.Condicao,
             Icone = atual.Icone,
@@ -116,4 +116,9 @@ public sealed class ClimaService(
                     "leitura-atual");
         }
     }
+
+    /// <summary>Arredondamento comercial (0,5 sempre para longe do zero) — o que se espera ao
+    /// ver "26°" numa tela de clima, diferente do arredondamento bancário do <c>Math.Round</c> padrão.</summary>
+    private static int ArredondarTemperatura(decimal valor) =>
+        (int)Math.Round(valor, MidpointRounding.AwayFromZero);
 }

@@ -107,8 +107,8 @@ public class PrevisaoDiariaAggregatorTests
         //     seria 21,0.
         // A máxima NÃO serve como asserção aqui: nos dois agrupamentos o bloco do meio-dia
         // entra, então ela daria 26 em ambos os casos.
-        dias[0].TemperaturaMinima.ShouldBe(19.5m);
-        dias[0].TemperaturaMaxima.ShouldBe(26m);
+        dias[0].TemperaturaMinima.ShouldBe(20); // 19,5 arredondado no DTO
+        dias[0].TemperaturaMaxima.ShouldBe(26);
 
         // E o mesmo valor deve sair do helper usado pelo endpoint de clima atual.
         var maxMinDia30 = PrevisaoDiariaAggregator
@@ -130,8 +130,10 @@ public class PrevisaoDiariaAggregatorTests
                 .Where(b => DateOnly.FromDateTime(b.InstanteUtc.ToOffset(offset).DateTime) == dia.Data)
                 .ToList();
 
-            dia.TemperaturaMaxima.ShouldBe(blocosDoDia.Max(b => b.TemperaturaMaxima));
-            dia.TemperaturaMinima.ShouldBe(blocosDoDia.Min(b => b.TemperaturaMinima));
+            dia.TemperaturaMaxima.ShouldBe(
+                (int)Math.Round(blocosDoDia.Max(b => b.TemperaturaMaxima), MidpointRounding.AwayFromZero));
+            dia.TemperaturaMinima.ShouldBe(
+                (int)Math.Round(blocosDoDia.Min(b => b.TemperaturaMinima), MidpointRounding.AwayFromZero));
         }
     }
 

@@ -34,8 +34,8 @@ public class ClimaServiceTests
 
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
-        resultado.TemperaturaMinima.ShouldBe(18m);
-        resultado.TemperaturaMaxima.ShouldBe(31.6m);
+        resultado.TemperaturaMinima.ShouldBe(18);
+        resultado.TemperaturaMaxima.ShouldBe(32); // 31,6 arredondado
         resultado.FonteMaxMin.ShouldBe("previsao");
     }
 
@@ -51,7 +51,7 @@ public class ClimaServiceTests
 
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
-        resultado.TemperaturaMaxima.ShouldBe(33m);
+        resultado.TemperaturaMaxima.ShouldBe(33);
     }
 
     [Fact]
@@ -78,8 +78,8 @@ public class ClimaServiceTests
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
         resultado.FonteMaxMin.ShouldBe("leitura-atual");
-        resultado.TemperaturaMinima.ShouldBe(24m);
-        resultado.TemperaturaMaxima.ShouldBe(26m);
+        resultado.TemperaturaMinima.ShouldBe(24);
+        resultado.TemperaturaMaxima.ShouldBe(26);
     }
 
     [Fact]
@@ -98,8 +98,8 @@ public class ClimaServiceTests
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
         resultado.FonteMaxMin.ShouldBe("leitura-atual");
-        resultado.TemperaturaMinima.ShouldBe(19m);
-        resultado.TemperaturaMaxima.ShouldBe(21m);
+        resultado.TemperaturaMinima.ShouldBe(19);
+        resultado.TemperaturaMaxima.ShouldBe(21);
     }
 
     [Fact]
