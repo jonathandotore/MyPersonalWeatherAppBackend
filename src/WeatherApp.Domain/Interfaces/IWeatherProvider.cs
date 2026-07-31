@@ -13,13 +13,16 @@ namespace WeatherApp.Domain.Interfaces;
 /// </summary>
 public interface IWeatherProvider
 {
-    /// <exception cref="Exceptions.CidadeNaoEncontradaException">Cidade inexistente.</exception>
-    /// <exception cref="Exceptions.ProvedorClimaIndisponivelException">Provedor fora do ar.</exception>
-    Task<ClimaAtualBruto> ObterClimaAtualAsync(string cidade, CancellationToken ct = default);
+    /// <summary>Devolve <c>null</c> quando o provedor não reconhece a cidade — "não encontrada"
+    /// é um resultado de negócio esperado, não uma falha do sistema, então não é sinalizado por
+    /// exceção. Ver <see cref="Exceptions.ProvedorClimaIndisponivelException"/> para quando o
+    /// provedor está de fato indisponível.</summary>
+    Task<ClimaAtualBruto?> ObterClimaAtualAsync(string cidade, CancellationToken ct = default);
 
     /// <summary>
     /// Devolve os blocos de 3 horas crus, <b>sem</b> agregar por dia — deliberadamente, para
     /// que a agregação (a lógica mais delicada do projeto) fique testável fora da camada de I/O.
+    /// <c>null</c> pelo mesmo motivo do método acima.
     /// </summary>
-    Task<PrevisaoBruta> ObterPrevisaoAsync(string cidade, CancellationToken ct = default);
+    Task<PrevisaoBruta?> ObterPrevisaoAsync(string cidade, CancellationToken ct = default);
 }

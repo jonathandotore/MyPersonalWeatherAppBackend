@@ -1,16 +1,6 @@
 namespace WeatherApp.Domain.Exceptions;
 
 /// <summary>
-/// Provedor respondeu 404 para o nome pesquisado. 
-/// Vira HTTP 404.
-/// </summary>
-public sealed class CidadeNaoEncontradaException(string cidade) : DomainException($"Não foi encontrada nenhuma cidade com o nome '{cidade}'.")
-{
-    public override string Titulo => "Cidade não encontrada";
-    public string Cidade { get; } = cidade;
-}
-
-/// <summary>
 /// Provedor externo indisponível: timeout, circuito aberto, 5xx ou rate limit estourado.
 /// Vira HTTP 503.
 ///

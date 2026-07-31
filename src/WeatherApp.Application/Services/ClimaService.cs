@@ -16,7 +16,9 @@ public sealed class ClimaService(
     ILogger<ClimaService> logger)
 {
     /// <summary>
-    /// Clima atual da cidade, com a máxima/mínima <b>reais do dia</b>.
+    /// Clima atual da cidade, com a máxima/mínima <b>reais do dia</b>. Devolve <c>null</c> quando
+    /// a cidade não é reconhecida pelo provedor — o controller traduz isso em 404 diretamente,
+    /// sem exceção envolvida.
     ///
     /// <para><b>Por que duas chamadas ao provedor.</b> O endpoint de clima atual expõe
     /// <c>temp_min</c>/<c>temp_max</c>, mas a própria OpenWeatherMap documenta esses campos como
@@ -29,9 +31,13 @@ public sealed class ClimaService(
     /// <c>CachedWeatherProvider</c> compartilha a entrada de previsão com a tela de 5 dias —
     /// é o argumento mais forte a favor do Decorator neste projeto.</para>
     /// </summary>
-    public async Task<ClimaAtualDto> ObterClimaAtualAsync(string cidade, CancellationToken ct = default)
+    public async Task<ClimaAtualDto?> ObterClimaAtualAsync(string cidade, CancellationToken ct = default)
     {
         var atual = await provider.ObterClimaAtualAsync(cidade, ct);
+        if (atual is null)
+        {
+            return null;
+        }
 
         var (maxima, minima, fonte) = await ResolverMaximaMinimaDoDiaAsync(cidade, atual, ct);
 
@@ -56,10 +62,15 @@ public sealed class ClimaService(
         };
     }
 
-    /// <summary>Previsão agregada em 5 dias.</summary>
-    public async Task<PrevisaoDto> ObterPrevisao5DiasAsync(string cidade, CancellationToken ct = default)
+    /// <summary>Previsão agregada em 5 dias. Devolve <c>null</c> quando a cidade não é reconhecida
+    /// pelo provedor.</summary>
+    public async Task<PrevisaoDto?> ObterPrevisao5DiasAsync(string cidade, CancellationToken ct = default)
     {
         var previsao = await provider.ObterPrevisaoAsync(cidade, ct);
+        if (previsao is null)
+        {
+            return null;
+        }
 
         return new PrevisaoDto
         {
@@ -71,17 +82,30 @@ public sealed class ClimaService(
 
     /// <summary>
     /// Deriva máxima/mínima do dia a partir da previsão, degradando para os campos da leitura
-    /// instantânea se a previsão estiver indisponível — a tela continua funcionando, e o campo
-    /// <c>fonteMaxMin</c> do DTO deixa a degradação explícita em vez de silenciosa.
+    /// instantânea sempre que a previsão não ajudar — indisponível, sem bloco para hoje, ou (caso
+    /// raro) sem encontrar a mesma cidade que o clima atual acabou de resolver. A tela continua
+    /// funcionando, e o campo <c>fonteMaxMin</c> do DTO deixa a degradação explícita em vez de
+    /// silenciosa.
     /// </summary>
     private async Task<(decimal Maxima, decimal Minima, string Fonte)> ResolverMaximaMinimaDoDiaAsync(
         string cidade,
         ClimaAtualBruto atual,
         CancellationToken ct)
     {
+        (decimal Maxima, decimal Minima, string Fonte) DegradarParaLeituraAtual() =>
+            (atual.TemperaturaMaximaInstantanea, atual.TemperaturaMinimaInstantanea, "leitura-atual");
+
         try
         {
             var previsao = await provider.ObterPrevisaoAsync(cidade, ct);
+            if (previsao is null)
+            {
+                logger.LogDebug(
+                    "Previsão não encontrou {Cidade} logo após o clima atual resolvê-la; usando a leitura instantânea.",
+                    cidade);
+                return DegradarParaLeituraAtual();
+            }
+
             var offset = TimeSpan.FromSeconds(atual.OffsetSegundos);
             var hojeLocal = DateOnly.FromDateTime(atual.InstanteUtc.ToOffset(offset).DateTime);
 
@@ -93,8 +117,7 @@ public sealed class ClimaService(
                 logger.LogDebug(
                     "Sem blocos de previsão para hoje em {Cidade}; usando a leitura instantânea.",
                     cidade);
-                return (atual.TemperaturaMaximaInstantanea, atual.TemperaturaMinimaInstantanea,
-                        "leitura-atual");
+                return DegradarParaLeituraAtual();
             }
 
             // A temperatura atual entra no cálculo: sem isso é possível exibir "atual 26°,
@@ -108,12 +131,12 @@ public sealed class ClimaService(
                                       or FalhaIntegracaoProvedorException)
         {
             // A previsão é complementar aqui: se ela falhar, ainda entregamos o clima atual.
+            // Diferente de "não encontrada", isto é uma falha real do provedor — continua exceção.
             logger.LogWarning(ex,
                 "Previsão indisponível para {Cidade}; máxima/mínima cairão para a leitura instantânea.",
                 cidade);
 
-            return (atual.TemperaturaMaximaInstantanea, atual.TemperaturaMinimaInstantanea,
-                    "leitura-atual");
+            return DegradarParaLeituraAtual();
         }
     }
 

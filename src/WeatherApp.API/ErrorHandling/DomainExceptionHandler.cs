@@ -47,7 +47,8 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problemDetails
 
     private static int MapearStatus(DomainException excecao) => excecao switch
     {
-        CidadeNaoEncontradaException => StatusCodes.Status404NotFound,
+        // Cidade não encontrada NÃO está aqui: deixou de ser exceção — ClimaService/
+        // FavoritosService devolvem null e os controllers montam o 404 diretamente.
         FavoritoNaoEncontradoException => StatusCodes.Status404NotFound,
 
         FavoritoDuplicadoException => StatusCodes.Status409Conflict,

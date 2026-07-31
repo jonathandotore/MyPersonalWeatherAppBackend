@@ -21,7 +21,9 @@ public sealed class FavoritosService(
         return [.. itens.Select(Mapear)];
     }
 
-    public async Task<CidadeFavoritaDto> AdicionarAsync(CriarFavoritoRequest request, CancellationToken ct = default)
+    /// <summary>Cria um favorito. Devolve <c>null</c> quando o provedor não reconhece a cidade —
+    /// o controller traduz isso em 404 diretamente, sem exceção envolvida.</summary>
+    public async Task<CidadeFavoritaDto?> AdicionarAsync(CriarFavoritoRequest request, CancellationToken ct = default)
     {
         var usuarioId = usuarioAtual.ObterUsuarioId();
         var nome = request.Nome.Trim();
@@ -31,11 +33,15 @@ public sealed class FavoritosService(
             throw new FavoritoDuplicadoException(nome);
         }
 
-        // Valida a cidade no provedor (404 se não existir) e captura nome canônico + coordenadas.
+        // Valida a cidade no provedor e captura nome canônico + coordenadas.
         var consulta = string.IsNullOrWhiteSpace(request.PaisCodigo) || nome.Contains(',')
             ? nome
             : $"{nome},{request.PaisCodigo.Trim()}";
         var resolvida = await clima.ObterClimaAtualAsync(consulta, ct);
+        if (resolvida is null)
+        {
+            return null;
+        }
 
         await usuarios.GarantirAnonimoAsync(usuarioId, ct);
 

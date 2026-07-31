@@ -22,19 +22,19 @@ public sealed class CachedWeatherProvider(
 {
     private readonly WeatherCacheSettings _cfg = opcoes.Value;
 
-    public Task<ClimaAtualBruto> ObterClimaAtualAsync(string cidade, CancellationToken ct = default) =>
+    public Task<ClimaAtualBruto?> ObterClimaAtualAsync(string cidade, CancellationToken ct = default) =>
         ObterOuCriarAsync(
             ChaveCache.DeClimaAtual(cidade),
             TimeSpan.FromMinutes(_cfg.TtlClimaAtualMinutos),
             () => inner.ObterClimaAtualAsync(cidade, ct));
 
-    public Task<PrevisaoBruta> ObterPrevisaoAsync(string cidade, CancellationToken ct = default) =>
+    public Task<PrevisaoBruta?> ObterPrevisaoAsync(string cidade, CancellationToken ct = default) =>
         ObterOuCriarAsync(
             ChaveCache.DePrevisao(cidade),
             TimeSpan.FromMinutes(_cfg.TtlPrevisaoMinutos),
             () => inner.ObterPrevisaoAsync(cidade, ct));
 
-    private async Task<T> ObterOuCriarAsync<T>(string chave, TimeSpan ttl, Func<Task<T>> buscar)
+    private async Task<T?> ObterOuCriarAsync<T>(string chave, TimeSpan ttl, Func<Task<T?>> buscar) where T : class
     {
         if (cache.TryGetValue(chave, out T? valor) && valor is not null)
         {
@@ -45,12 +45,17 @@ public sealed class CachedWeatherProvider(
         logger.LogDebug("Cache miss: {Chave}", chave);
         var resultado = await buscar();
 
-        // AbsoluteExpirationRelativeToNow, nunca SlidingExpiration: com sliding, uma cidade
-        // consultada com frequência nunca expiraria e serviria dado arbitrariamente velho.
-        cache.Set(chave, resultado, new MemoryCacheEntryOptions
+        // "Não encontrado" (null) não é cacheado: é barato de recalcular e cachear um typo do
+        // usuário faria uma correção de digitação continuar 404 pelo TTL inteiro.
+        if (resultado is not null)
         {
-            AbsoluteExpirationRelativeToNow = ttl
-        });
+            // AbsoluteExpirationRelativeToNow, nunca SlidingExpiration: com sliding, uma cidade
+            // consultada com frequência nunca expiraria e serviria dado arbitrariamente velho.
+            cache.Set(chave, resultado, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = ttl
+            });
+        }
 
         return resultado;
     }

@@ -34,9 +34,13 @@ public sealed class OpenWeatherMapProvider(
 
     private readonly OpenWeatherMapSettings _cfg = opcoes.Value;
 
-    public async Task<ClimaAtualBruto> ObterClimaAtualAsync(string cidade, CancellationToken ct = default)
+    public async Task<ClimaAtualBruto?> ObterClimaAtualAsync(string cidade, CancellationToken ct = default)
     {
         var payload = await ObterAsync<OwmClimaAtualResponse>("data/2.5/weather", cidade, ct);
+        if (payload is null)
+        {
+            return null;
+        }
 
         var condicao = payload.Weather?.FirstOrDefault();
 
@@ -56,9 +60,13 @@ public sealed class OpenWeatherMapProvider(
             InstanteUtc: DateTimeOffset.FromUnixTimeSeconds(payload.Dt));
     }
 
-    public async Task<PrevisaoBruta> ObterPrevisaoAsync(string cidade, CancellationToken ct = default)
+    public async Task<PrevisaoBruta?> ObterPrevisaoAsync(string cidade, CancellationToken ct = default)
     {
         var payload = await ObterAsync<OwmPrevisaoResponse>("data/2.5/forecast", cidade, ct);
+        if (payload is null)
+        {
+            return null;
+        }
 
         var blocos = (payload.List ?? [])
             .Select(b =>
@@ -84,7 +92,7 @@ public sealed class OpenWeatherMapProvider(
             Blocos: blocos);
     }
 
-    private async Task<T> ObterAsync<T>(string rota, string cidade, CancellationToken ct)
+    private async Task<T?> ObterAsync<T>(string rota, string cidade, CancellationToken ct) where T : class
     {
         var url = MontarUrl(rota, cidade);
 
@@ -108,7 +116,14 @@ public sealed class OpenWeatherMapProvider(
         }
 
         if (resposta.StatusCode == HttpStatusCode.NotFound)
-            throw new CidadeNaoEncontradaException(cidade);
+        {
+            // "Cidade não encontrada" é um resultado de negócio esperado (usuário digitou algo
+            // que o provedor não reconhece), não uma falha do sistema — retorna null em vez de
+            // lançar, para que o 404 flua como um caminho normal do código até o controller,
+            // em vez de por cima de uma exceção.
+            logger.LogDebug("OpenWeatherMap não encontrou '{Cidade}' em {Rota}.", cidade, rota);
+            return null;
+        }
 
         if (resposta.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {

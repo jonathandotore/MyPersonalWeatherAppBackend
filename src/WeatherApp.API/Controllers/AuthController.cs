@@ -4,9 +4,10 @@ using WeatherApp.Application.Services;
 
 namespace WeatherApp.API.Controllers;
 
+// Sem [Produces("application/json")]: força o content-type mesmo nas respostas de Problem(),
+// sobrepondo o application/problem+json que o ASP.NET Core aplicaria por conta própria.
 [ApiController]
 [Route("api/auth")]
-[Produces("application/json")]
 public sealed class AuthController(AuthService auth) : ControllerBase
 {
     [HttpPost("register")]

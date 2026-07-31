@@ -34,6 +34,7 @@ public class ClimaServiceTests
 
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
+        resultado.ShouldNotBeNull();
         resultado.TemperaturaMinima.ShouldBe(18);
         resultado.TemperaturaMaxima.ShouldBe(32); // 31,6 arredondado
         resultado.FonteMaxMin.ShouldBe("previsao");
@@ -51,18 +52,21 @@ public class ClimaServiceTests
 
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
+        resultado.ShouldNotBeNull();
         resultado.TemperaturaMaxima.ShouldBe(33);
     }
 
     [Fact]
-    public async Task ObterClimaAtual_propaga_cidade_nao_encontrada_sem_chamar_a_previsao()
+    public async Task ObterClimaAtual_devolve_null_para_cidade_nao_encontrada_sem_chamar_a_previsao()
     {
+        // "Não encontrada" é um resultado normal, não uma exceção: o provider devolve null
+        // e o serviço propaga null, sem lançar nada.
         _provider.ObterClimaAtualAsync("inexistente", Arg.Any<CancellationToken>())
-            .Returns<ClimaAtualBruto>(_ => throw new CidadeNaoEncontradaException("inexistente"));
+            .Returns((ClimaAtualBruto?)null);
 
-        await Should.ThrowAsync<CidadeNaoEncontradaException>(
-            () => _sut.ObterClimaAtualAsync("inexistente", _ct));
+        var resultado = await _sut.ObterClimaAtualAsync("inexistente", _ct);
 
+        resultado.ShouldBeNull();
         await _provider.DidNotReceive().ObterPrevisaoAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -73,10 +77,11 @@ public class ClimaServiceTests
         _provider.ObterClimaAtualAsync(Cidade, Arg.Any<CancellationToken>())
             .Returns(NovoClimaAtual(temp: 25m, minInstantanea: 24m, maxInstantanea: 26m, agora));
         _provider.ObterPrevisaoAsync(Cidade, Arg.Any<CancellationToken>())
-            .Returns<PrevisaoBruta>(_ => throw new ProvedorClimaIndisponivelException("indisponível"));
+            .Returns<PrevisaoBruta?>(_ => throw new ProvedorClimaIndisponivelException("indisponível"));
 
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
+        resultado.ShouldNotBeNull();
         resultado.FonteMaxMin.ShouldBe("leitura-atual");
         resultado.TemperaturaMinima.ShouldBe(24);
         resultado.TemperaturaMaxima.ShouldBe(26);
@@ -97,6 +102,7 @@ public class ClimaServiceTests
 
         var resultado = await _sut.ObterClimaAtualAsync(Cidade, _ct);
 
+        resultado.ShouldNotBeNull();
         resultado.FonteMaxMin.ShouldBe("leitura-atual");
         resultado.TemperaturaMinima.ShouldBe(19);
         resultado.TemperaturaMaxima.ShouldBe(21);
@@ -118,8 +124,20 @@ public class ClimaServiceTests
 
         var resultado = await sut.ObterPrevisao5DiasAsync(Cidade, _ct);
 
+        resultado.ShouldNotBeNull();
         resultado.Dias.Count.ShouldBe(5);
         resultado.Cidade.ShouldBe(Cidade);
+    }
+
+    [Fact]
+    public async Task ObterPrevisao5Dias_devolve_null_para_cidade_nao_encontrada()
+    {
+        _provider.ObterPrevisaoAsync("inexistente", Arg.Any<CancellationToken>())
+            .Returns((PrevisaoBruta?)null);
+
+        var resultado = await _sut.ObterPrevisao5DiasAsync("inexistente", _ct);
+
+        resultado.ShouldBeNull();
     }
 
     private static ClimaAtualBruto NovoClimaAtual(

@@ -386,11 +386,11 @@ O frontend pode tratar erro de forma uniforme.
 
 ### Mapeamento de exceção → status HTTP
 
-Centralizado em `DomainExceptionHandler`:
+Centralizado em `DomainExceptionHandler` — **exceto "cidade não encontrada"**, que deliberadamente
+**não** é uma exceção (ver [decisão 16](#16-cidade-não-encontrada-deixou-de-ser-exceção)):
 
 | Exceção de domínio | Status | Raciocínio |
 |---|---|---|
-| `CidadeNaoEncontradaException` | `404` | Recurso inexistente |
 | `FavoritoNaoEncontradoException` | `404` | Inexistente **ou de outro usuário** — deliberadamente 404 e não 403: responder 403 confirmaria que aquele `Id` existe, o que é vazamento de informação |
 | `FavoritoDuplicadoException` | `409` | Conflito com o estado atual |
 | `EmailJaCadastradoException` | `409` | Conflito |
@@ -398,6 +398,10 @@ Centralizado em `DomainExceptionHandler`:
 | `UsuarioNaoIdentificadoException` | `401` | Na prática, hoje o middleware `[Authorize]` intercepta antes dessa exceção ser lançada — mantida como defesa em profundidade |
 | `ProvedorClimaIndisponivelException` | `503` + `Retry-After: 60` | Indisponibilidade temporária de terceiro (inclusive timeout/circuito aberto pelo Polly — ver [decisão 10](#10-timeoutrejectedexception-e-brokencircuitexception-também-precisam-de-catch)), não erro do cliente |
 | `FalhaIntegracaoProvedorException` | `502` | Chave inválida/ausente: **configuração nossa**, não culpa do cliente nem instabilidade do provedor |
+
+"Cidade não encontrada" (`404`) é construída diretamente no controller via `Problem(...)`, com o
+mesmo `title`/`detail` de antes — o corpo da resposta não muda, só deixou de passar por uma
+exceção lançada e capturada.
 
 ---
 
@@ -507,8 +511,9 @@ O teste `Agrupamento_usa_data_LOCAL_e_nao_UTC` fixa isso escolhendo deliberadame
 
 Se `EnsureSuccessStatusCode()` roda primeiro, o 404 da OpenWeatherMap vira uma
 `HttpRequestException` genérica e o cliente recebe **500** em vez de **404** — falhando exatamente
-no requisito de "tratamento de erros". O provider testa o 404 explicitamente e o converte em
-`CidadeNaoEncontradaException`.
+no requisito de "tratamento de erros". O provider testa o 404 explicitamente antes de qualquer
+outra checagem e devolve `null` (ver [decisão 16](#16-cidade-não-encontrada-deixou-de-ser-exceção)
+sobre por que não é mais uma exceção).
 
 ### 7. `IExceptionHandler` em vez de middleware escrito à mão
 
@@ -608,11 +613,47 @@ O impacto real aqui é nulo — a API **gera** documento, não parseia documento
 de corrigir é outro: `TreatWarningsAsErrors` transforma `NU1903` em erro de build, e quem clonar o
 repositório precisa de um `restore` limpo.
 
+### 16. "Cidade não encontrada" deixou de ser exceção
+
+Até aqui, um 404 do provedor virava `CidadeNaoEncontradaException`, capturada pelo
+`DomainExceptionHandler` e traduzida em `404 ProblemDetails`. Funcionalmente correto — testado e
+documentado — mas usar exceção para um resultado de negócio **esperado e comum** (usuário digita
+algo que o provedor não reconhece) tem custo real: a exceção atravessa 3 camadas
+(Infrastructure → Application → API) só para virar, no fim, um retorno de valor simples.
+
+Refatorado para fluxo de retorno normal, de baixo para cima:
+
+- `IWeatherProvider.ObterClimaAtualAsync`/`ObterPrevisaoAsync` (Domain) passam a devolver `T?` —
+  `null` quando o provedor não reconhece a cidade;
+- `OpenWeatherMapProvider` devolve `null` ao ver 404, em vez de lançar;
+- `CachedWeatherProvider` propaga o `null` sem cachear (um typo do usuário não deve continuar
+  "não encontrado" pelo TTL inteiro depois de corrigido);
+- `ClimaService`/`FavoritosService` propagam `null` até o controller;
+- `ClimaController`/`FavoritosController` checam `null` e chamam `Problem(...)` diretamente —
+  **mesmo `title`/`detail`** que a exceção produzia, então o corpo da resposta na rede não mudou,
+  só o caminho em C# que chega até ele.
+
+**Efeito colateral encontrado ao verificar a correção, não previsto de antemão:** `Problem()`
+retorna um `ActionResult` que passa pela negociação de conteúdo normal do MVC — diferente do
+`IExceptionHandler`, que escreve direto na resposta via `IProblemDetailsService`, contornando essa
+negociação. Como `ClimaController`/`FavoritosController` tinham `[Produces("application/json")]`,
+essa anotação **sobrepunha** o `application/problem+json` que o `Problem()` tentava aplicar — o
+erro passou a sair como `application/json` comum. `[Produces("application/json")]` era redundante
+(não há outro formatter registrado) e foi removido dos três controllers; sem ela, a negociação de
+conteúdo escolhe `application/problem+json` para erros e `application/json` para sucesso,
+corretamente.
+
+**Deliberadamente fora de escopo desta mudança:** `FavoritoDuplicadoException` (409),
+`FavoritoNaoEncontradoException` (404 na remoção de favorito) e as exceções de auth continuam
+exceções. São conflitos ou falhas reais de configuração/integração — diferente de "não encontrado",
+que é uma saída de negócio comum. Convertê-las também seria replicar a mudança sem necessidade
+relatada.
+
 ---
 
 ## Estratégia de testes
 
-**38 testes, todos passando.** `dotnet test`
+**39 testes, todos passando.** `dotnet test`
 
 ```
 tests/WeatherApp.Application.Tests/
@@ -648,9 +689,11 @@ noturno→diurno; fuso fracionário (Índia, +05:30); entradas degeneradas (list
 
 **`ClimaService`**: máx/mín vêm do forecast e não de `main.temp_max`/`temp_min` (**anti-regressão**
 com os valores reais medidos — 23,92/23,92 → 22,41/31,62); temperatura atual entra no cálculo de
-máx/mín; `CidadeNaoEncontradaException` propaga sem chamar a previsão; degradação para
-`fonteMaxMin: "leitura-atual"` quando a previsão falha ou não tem bloco para hoje; previsão delega
-corretamente para o aggregator via `TimeProvider` controlado.
+máx/mín; cidade não encontrada devolve `null` sem chamar a previsão (ver
+[decisão 16](#16-cidade-não-encontrada-deixou-de-ser-exceção)); degradação para
+`fonteMaxMin: "leitura-atual"` quando a previsão falha, não tem bloco para hoje, ou (caso raro)
+não encontra a mesma cidade que o clima atual já resolveu; previsão delega corretamente para o
+aggregator via `TimeProvider` controlado.
 
 **`FavoritosService`**: duplicata não chega a consultar o provedor; cidade inexistente não persiste;
 usuário anônimo é garantido antes do favorito; nome **canônico** do provedor é o que é salvo, não o

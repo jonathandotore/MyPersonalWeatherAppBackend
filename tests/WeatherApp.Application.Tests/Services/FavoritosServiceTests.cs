@@ -41,15 +41,17 @@ public class FavoritosServiceTests
     }
 
     [Fact]
-    public async Task AdicionarAsync_propaga_cidade_nao_encontrada_sem_persistir()
+    public async Task AdicionarAsync_devolve_null_para_cidade_nao_encontrada_sem_persistir()
     {
+        // "Não encontrada" é um resultado normal, não uma exceção: o provider devolve null
+        // e o serviço propaga null, sem lançar nada.
         _favoritos.ExisteAsync(UsuarioId, "asdfgh", Arg.Any<CancellationToken>()).Returns(false);
         _clima.ObterClimaAtualAsync("asdfgh", Arg.Any<CancellationToken>())
-            .Returns<ClimaAtualBruto>(_ => throw new CidadeNaoEncontradaException("asdfgh"));
+            .Returns((ClimaAtualBruto?)null);
 
-        await Should.ThrowAsync<CidadeNaoEncontradaException>(
-            () => _sut.AdicionarAsync(new CriarFavoritoRequest { Nome = "asdfgh" }, _ct));
+        var resultado = await _sut.AdicionarAsync(new CriarFavoritoRequest { Nome = "asdfgh" }, _ct);
 
+        resultado.ShouldBeNull();
         await _favoritos.DidNotReceive().AdicionarAsync(Arg.Any<CidadeFavorita>(), Arg.Any<CancellationToken>());
     }
 
@@ -74,6 +76,7 @@ public class FavoritosServiceTests
         var resultado = await _sut.AdicionarAsync(
             new CriarFavoritoRequest { Nome = "sao jose do rio preto" }, _ct);
 
+        resultado.ShouldNotBeNull();
         resultado.Nome.ShouldBe("São José do Rio Preto");
         await _favoritos.Received(1).AdicionarAsync(
             Arg.Is<CidadeFavorita>(f => f!.Nome == "São José do Rio Preto"), Arg.Any<CancellationToken>());
